@@ -53,14 +53,6 @@ jobs:
     - name: 📥 Checkout repository
       uses: actions/checkout@v4
 
-    - name: 📋 Cek target yang tersedia
-      run: |
-        echo "📋 Cek direktori target/linux/:"
-        ls -la target/linux/ || true
-        echo ""
-        echo "📋 Cari target qcom/msm:"
-        ls -la target/linux/ | grep -E "qcom|msm|arm" || true
-
     - name: 🔄 Update feeds
       run: |
         ./scripts/feeds update -a
@@ -68,72 +60,30 @@ jobs:
 
     - name: 📄 Add Samsung J5 Device Tree
       run: |
-        # Cari direktori DTS yang tepat - coba beberapa lokasi
-        DTS_DIR=""
-        for path in target/linux/*/files-*/arch/arm64/boot/dts/qcom; do
-          if mkdir -p "$path" 2>/dev/null; then
-            DTS_DIR="$path"
-            break
-          fi
-        done
+        cd immortalwrt
         
-        # Jika tidak ditemukan, coba di generic
-        if [ -z "$DTS_DIR" ]; then
-          for path in target/linux/generic/files-*/arch/arm64/boot/dts/qcom; do
-            if mkdir -p "$path" 2>/dev/null; then
-              DTS_DIR="$path"
-              break
-            fi
-          done
-        fi
-        
-        # Fallback terakhir
-        if [ -z "$DTS_DIR" ]; then
-          mkdir -p target/linux/generic/files-6.6/arch/arm64/boot/dts/qcom
-          DTS_DIR="target/linux/generic/files-6.6/arch/arm64/boot/dts/qcom"
-        fi
+        # Path yang benar untuk msm89xx target
+        DTS_DIR="target/linux/msm89xx/files-6.18/arch/arm64/boot/dts/qcom"
+        mkdir -p "$DTS_DIR"
         
         echo "📂 DTS_DIR: $DTS_DIR"
         
+        # Download DTS files
         curl -s -o "$DTS_DIR/msm8916-samsung-j5-common.dtsi" \
           https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5-common.dtsi
         
         curl -s -o "$DTS_DIR/msm8916-samsung-j5.dts" \
           https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts
         
-        echo "✅ DTS files added"
+        echo "✅ DTS files added:"
+        ls -la "$DTS_DIR/"
 
-    - name: 📝 Add Samsung J5 to device definition
+    - name: 📝 Add Samsung J5 to msm8916.mk
       run: |
-        # Cari file definisi perangkat yang tepat
-        MK_FILE=""
+        cd immortalwrt
+        mkdir -p target/linux/msm89xx/image
         
-        # Coba di target/linux/msm89xx
-        if [ -f "target/linux/msm89xx/image/msm8916.mk" ]; then
-          MK_FILE="target/linux/msm89xx/image/msm8916.mk"
-        elif [ -f "target/linux/qcom/image/msm8916.mk" ]; then
-          MK_FILE="target/linux/qcom/image/msm8916.mk"
-        elif [ -f "target/linux/generic/image/msm8916.mk" ]; then
-          MK_FILE="target/linux/generic/image/msm8916.mk"
-        fi
-        
-        # Jika tidak ada, buat baru di lokasi yang tepat
-        if [ -z "$MK_FILE" ]; then
-          # Cari direktori image yang tepat
-          IMAGE_DIR=""
-          for dir in target/linux/*/image; do
-            if [ -d "$dir" ]; then
-              IMAGE_DIR="$dir"
-              break
-            fi
-          done
-          MK_FILE="$IMAGE_DIR/msm8916.mk"
-        fi
-        
-        mkdir -p "$(dirname "$MK_FILE")"
-        echo "📂 MK_FILE: $MK_FILE"
-        
-        cat > "$MK_FILE" << 'EOF'
+        cat > target/linux/msm89xx/image/msm8916.mk << 'EOF'
         include $(TOPDIR)/rules.mk
         
         DEVICE_VARS += DEVICE_DTS
@@ -166,24 +116,13 @@ jobs:
         TARGET_DEVICES += samsung-j5
         EOF
         
-        echo "✅ Device definition added to $MK_FILE"
+        echo "✅ msm8916.mk created"
 
     - name: ⚙️ Generate .config
       run: |
-        # Cari target yang tersedia
-        TARGET=""
-        if [ -d "target/linux/msm89xx" ]; then
-          TARGET="msm89xx"
-        elif [ -d "target/linux/qcom" ]; then
-          TARGET="qcom"
-        elif [ -d "target/linux/arm64" ]; then
-          TARGET="arm64"
-        fi
+        cd immortalwrt
         
-        echo "📋 Target yang digunakan: $TARGET"
-        
-        if [ "$TARGET" = "msm89xx" ]; then
-          cat > .config << 'EOF'
+        cat > .config << 'EOF'
         CONFIG_TARGET_msm89xx=y
         CONFIG_TARGET_msm89xx_msm8916=y
         CONFIG_TARGET_msm89xx_msm8916_DEVICE_samsung-j5=y
@@ -218,7 +157,6 @@ jobs:
         CONFIG_PACKAGE_wpad-basic=y
         CONFIG_PACKAGE_hostapd=y
         CONFIG_PACKAGE_wireless-tools=y
-        CONFIG_PACKAGE_wpa-supplicant=y
         
         CONFIG_PACKAGE_kmod-usb-core=y
         CONFIG_PACKAGE_kmod-usb-net=y
@@ -248,69 +186,11 @@ jobs:
         CONFIG_BUSYBOX_DEFAULT_FEATURE_EXTRA_QUIET=y
         CONFIG_BUSYBOX_DEFAULT_FEATURE_SYSLOG=y
         EOF
-        elif [ "$TARGET" = "qcom" ]; then
-          cat > .config << 'EOF'
-        CONFIG_TARGET_qcom=y
-        CONFIG_TARGET_qcom_msm89xx=y
-        CONFIG_TARGET_qcom_msm89xx_DEVICE_samsung-j5=y
-        
-        CONFIG_TARGET_ROOTFS_SQUASHFS=y
-        CONFIG_TARGET_IMAGES_GZIP=y
-        CONFIG_TARGET_IMAGES_ITB=y
-        
-        CONFIG_KERNEL_DEVICETREE=y
-        CONFIG_KERNEL_DTBS="qcom/msm8916-samsung-j5.dtb"
-        CONFIG_KERNEL_FIT_IMAGE=y
-        
-        CONFIG_TARGET_OPTIMIZATION="-Os -pipe -fno-caller-saves -fno-plt"
-        CONFIG_STRIP_KERNEL_EXPORTS=y
-        CONFIG_USE_SSTRIP=y
-        CONFIG_STRIP_ALL=y
-        
-        CONFIG_PACKAGE_busybox=y
-        CONFIG_PACKAGE_dropbear=y
-        CONFIG_PACKAGE_firewall=y
-        CONFIG_PACKAGE_dnsmasq-full=y
-        CONFIG_PACKAGE_luci-light=y
-        CONFIG_PACKAGE_luci-theme-bootstrap=y
-        CONFIG_PACKAGE_luci-app-firewall=y
-        CONFIG_PACKAGE_iw=y
-        CONFIG_PACKAGE_iwinfo=y
-        CONFIG_PACKAGE_wpad-basic=y
-        CONFIG_PACKAGE_hostapd=y
-        CONFIG_PACKAGE_wireless-tools=y
-        CONFIG_PACKAGE_kmod-usb-core=y
-        CONFIG_PACKAGE_kmod-usb-net=y
-        CONFIG_PACKAGE_kmod-usb-net-qmi-wwan=y
-        CONFIG_PACKAGE_kmod-usb-serial=y
-        CONFIG_PACKAGE_kmod-usb-serial-option=y
-        CONFIG_PACKAGE_kmod-usb-serial-qualcomm=y
-        CONFIG_PACKAGE_usbutils=y
-        CONFIG_PACKAGE_kmod-usb-phy-qcom-msm=y
-        CONFIG_PACKAGE_modemmanager=y
-        CONFIG_PACKAGE_luci-proto-modemmanager=y
-        CONFIG_PACKAGE_luci-app-modemmanager=y
-        CONFIG_PACKAGE_libmbim=y
-        CONFIG_PACKAGE_libqmi=y
-        CONFIG_PACKAGE_curl=y
-        CONFIG_PACKAGE_wget=y
-        CONFIG_BUSYBOX_DEFAULT_FEATURE_EXTRA_QUIET=y
-        CONFIG_BUSYBOX_DEFAULT_FEATURE_SYSLOG=y
-        EOF
-        else
-          echo "❌ Tidak ada target yang cocok untuk MSM8916!"
-          echo "Target yang tersedia:"
-          ls -la target/linux/
-          exit 1
-        fi
         
         make defconfig
         
-        echo ""
-        echo "📋 VERIFIKASI TARGET:"
+        echo "📋 VERIFIKASI:"
         grep "CONFIG_TARGET" .config | grep -v "is not set" || true
-        echo ""
-        echo "📋 VERIFIKASI DEVICE:"
         grep "samsung-j5" .config | grep -v "is not set" || true
 
     - name: 📥 Download sources
@@ -319,32 +199,15 @@ jobs:
 
     - name: 🔨 Build firmware
       run: |
-        echo "🚀 Building for Samsung J5 (MSM8916)..."
+        echo "🚀 Building for Samsung J5 (msm89xx)..."
         make -j4 V=s || make -j1 V=s
         echo "✅ Build completed!"
 
     - name: 📂 List build output
       if: always()
       run: |
-        echo "=========================================="
         echo "📂 MENCARI FILE HASIL BUILD"
-        echo "=========================================="
-        
-        echo ""
-        echo "📂 1. Cari semua file:"
-        find bin/targets/ -name "*.img" -o -name "*.bin" -o -name "*.dtb" -o -name "*.itb" 2>/dev/null || echo "Tidak ada file ditemukan"
-        
-        echo ""
-        echo "📂 2. Cek struktur direktori:"
-        ls -la bin/targets/ 2>/dev/null || echo "Folder bin/targets/ tidak ditemukan"
-        
-        echo ""
-        echo "📂 3. Cek folder msm89xx:"
-        ls -la bin/targets/msm89xx/ 2>/dev/null || echo "Folder msm89xx tidak ditemukan"
-        
-        echo ""
-        echo "📂 4. Cek folder msm89xx/msm8916:"
-        ls -la bin/targets/msm89xx/msm8916/ 2>/dev/null || echo "Folder msm8916 tidak ditemukan"
+        find bin/targets/ -name "*.img" -o -name "*.itb" -o -name "*.dtb" 2>/dev/null || echo "Tidak ada file"
 
     - name: 📤 Upload firmware
       if: success()
@@ -354,7 +217,6 @@ jobs:
         path: |
           bin/targets/msm89xx/msm8916/*.img
           bin/targets/msm89xx/msm8916/*.itb
-          bin/targets/msm89xx/msm8916/*.bin
           bin/targets/msm89xx/msm8916/*.dtb
           bin/targets/msm89xx/msm8916/*.manifest
           .config
@@ -394,7 +256,6 @@ jobs:
         files: |
           bin/targets/msm89xx/msm8916/*.img
           bin/targets/msm89xx/msm8916/*.itb
-          bin/targets/msm89xx/msm8916/*.bin
           bin/targets/msm89xx/msm8916/*.dtb
         draft: false
         prerelease: true
