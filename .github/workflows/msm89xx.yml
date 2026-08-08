@@ -1,4 +1,4 @@
-name: 🚀 Build ImmortalWrt Samsung J5 (MSM8916) - Optimized
+name: 🚀 Build ImmortalWrt Samsung J5 (MSM8916)
 
 on:
   workflow_dispatch:
@@ -23,6 +23,9 @@ on:
         options:
           - 'tidak'
           - 'ya'
+
+env:
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
 jobs:
   build:
@@ -82,7 +85,7 @@ jobs:
         free -h
 
     # ============================================
-    # 2. GITHUB CACHE (MAXIMUM)
+    # 2. GITHUB CACHE
     # ============================================
     - name: 💾 Cache Toolchain
       uses: actions/cache@v4
@@ -155,7 +158,7 @@ jobs:
         KERNEL_DTS_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35/arch/arm64/boot/dts/qcom"
         mkdir -p "$KERNEL_DTS_DIR"
         
-        # Download DTS files directly to kernel build dir
+        # Download DTS files
         cd "$KERNEL_DTS_DIR"
         wget -q https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5-common.dtsi
         wget -q https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts
@@ -169,7 +172,7 @@ jobs:
         wget -q -O "build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35/include/dt-bindings/clock.h" \
           https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/clock/qcom,gcc-msm8916.h
         
-        # Also copy to target/linux for persistence
+        # Copy to target/linux for persistence
         mkdir -p target/linux/msm89xx/files-6.18/arch/arm64/boot/dts/qcom
         cp "$KERNEL_DTS_DIR"/*.dts* target/linux/msm89xx/files-6.18/arch/arm64/boot/dts/qcom/ 2>/dev/null || true
         
@@ -327,7 +330,6 @@ jobs:
         CORES=$(nproc)
         echo "📥 Downloading with $CORES threads..."
         
-        # Download with parallel
         make download -j$CORES V=s || true
         make download -j$CORES V=s || true
         make download -j1 V=s || true
@@ -344,11 +346,9 @@ jobs:
         echo "🚀 Building with $CORES cores"
         echo "================================"
         
-        # Show ccache stats
         echo "📊 CCACHE BEFORE BUILD:"
         ccache -s
         
-        # Clean if requested
         if [ "${{ github.event.inputs.clean_build }}" = "ya" ]; then
           echo "🧹 Clean build requested"
           make clean
@@ -372,7 +372,6 @@ jobs:
         echo "🔨 Phase 5: Final build"
         make -j$CORES V=s || make -j1 V=s
         
-        # Show ccache stats
         echo "📊 CCACHE AFTER BUILD:"
         ccache -s
         
@@ -387,18 +386,18 @@ jobs:
         echo "📂 BUILD OUTPUT:"
         echo "================================"
         
-        # Find firmware files
-        find bin/targets/ -type f \( -name "*.img" -o -name "*.itb" -o -name "*.dtb" -o -name "*.bin" \) 2>/dev/null | while read file; do
+        # Find all firmware files
+        find bin/targets/ -type f \( -name "*.itb" -o -name "*.img" -o -name "*.dtb" -o -name "*.bin" -o -name "*.gz" \) 2>/dev/null | while read file; do
           size=$(du -h "$file" 2>/dev/null | cut -f1)
           echo "📦 $file ($size)"
         done
         
-        # Check if build succeeded
+        # Check output directory
         if [ -d "bin/targets/msm89xx/msm8916" ]; then
           echo ""
           echo "✅ Build SUCCESS!"
           echo "📁 Output: bin/targets/msm89xx/msm8916/"
-          ls -la bin/targets/msm89xx/msm8916/ || true
+          ls -lah bin/targets/msm89xx/msm8916/ || true
         else
           echo ""
           echo "⚠️ Build may have FAILED - no output directory found"
@@ -415,10 +414,12 @@ jobs:
       with:
         name: immortalwrt-j5-msm8916-${{ github.run_number }}
         path: |
-          bin/targets/msm89xx/msm8916/*.img
           bin/targets/msm89xx/msm8916/*.itb
+          bin/targets/msm89xx/msm8916/*.img
           bin/targets/msm89xx/msm8916/*.dtb
           bin/targets/msm89xx/msm8916/*.manifest
+          bin/targets/msm89xx/msm8916/*.bin
+          bin/targets/msm89xx/msm8916/*.gz
           .config
         retention-days: 7
 
@@ -465,16 +466,29 @@ jobs:
           - ✅ USB Gadget (RNDIS)
           - ✅ Fast Boot (U-Boot FIT)
           
-          ### 📦 Cara Flashing:
+          ### 📦 File Firmware:
+          - `*.itb` = Boot Image (FIT) - **INI ADALAH BOOT IMAGE**
+          - `*.img` = Root Filesystem
+          - `*.dtb` = Device Tree Blob
+          
+          ### 📱 Cara Flashing:
           ```bash
-          # Via fastboot
+          # Via fastboot (REKOMENDASI)
           fastboot flash boot openwrt-*.itb
           fastboot flash rootfs openwrt-*.img
           fastboot reboot
           
-          # Via TWRP (jika tersedia)
-          # Install openwrt-*.itb dan openwrt-*.img
+          # Jika ada partisi A/B
+          fastboot flash boot_a openwrt-*.itb
+          fastboot flash boot_b openwrt-*.itb
+          fastboot flash system openwrt-*.img
           ```
+          
+          ### 🔧 First Boot Setup:
+          1. Connect WiFi: `${{ github.event.inputs.wifi_ssid }}`
+          2. Open browser: `http://192.168.1.1`
+          3. Login: `root` (no password)
+          4. Set APN: `${{ github.event.inputs.apn }}`
           
           ### ⚠️ Peringatan:
           - Gunakan dengan risiko sendiri!
@@ -486,13 +500,12 @@ jobs:
           - Build Number: #${{ github.run_number }}
           - Commit: `${{ github.sha }}`
           - Run ID: ${{ github.run_id }}
-          - [Build Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           
           ---
           *Built with ❤️ using GitHub Actions*
         files: |
-          bin/targets/msm89xx/msm8916/*.img
           bin/targets/msm89xx/msm8916/*.itb
+          bin/targets/msm89xx/msm8916/*.img
           bin/targets/msm89xx/msm8916/*.dtb
         draft: false
         prerelease: true
