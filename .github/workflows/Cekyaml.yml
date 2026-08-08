@@ -1,0 +1,7 @@
+- name: 📋 Cek target yang tersedia
+  run: |
+    echo "📋 Target yang tersedia di repo ini:"
+    make menuconfig help 2>&1 | grep -E "Target|arm64|msm" || true
+    echo ""
+    echo "📋 Cek direktori target/linux/:"
+    ls -la target/linux/ || true
