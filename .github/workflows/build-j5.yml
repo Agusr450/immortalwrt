@@ -60,8 +60,6 @@ jobs:
 
     - name: 📄 Add Samsung J5 Device Tree
       run: |
-        cd immortalwrt
-        
         # Path yang benar untuk msm89xx target
         DTS_DIR="target/linux/msm89xx/files-6.18/arch/arm64/boot/dts/qcom"
         mkdir -p "$DTS_DIR"
@@ -80,7 +78,6 @@ jobs:
 
     - name: 📝 Add Samsung J5 to msm8916.mk
       run: |
-        cd immortalwrt
         mkdir -p target/linux/msm89xx/image
         
         cat > target/linux/msm89xx/image/msm8916.mk << 'EOF'
@@ -120,8 +117,6 @@ jobs:
 
     - name: ⚙️ Generate .config
       run: |
-        cd immortalwrt
-        
         cat > .config << 'EOF'
         CONFIG_TARGET_msm89xx=y
         CONFIG_TARGET_msm89xx_msm8916=y
@@ -239,18 +234,16 @@ jobs:
         tag_name: j5-msm8916-${{ github.run_number }}
         name: 📦 ImmortalWrt J5 MSM8916 #${{ github.run_number }}
         body: |
-          ## 📱 ImmortalWrt for Samsung J5 (MSM8916)
+          📱 ImmortalWrt for Samsung J5 (MSM8916)
           
-          **WiFi**: `${{ github.event.inputs.wifi_ssid }}` / `${{ github.event.inputs.wifi_password }}`
-          **APN**: `${{ github.event.inputs.apn }}`
-          **IP**: 192.168.1.1
+          WiFi: ${{ github.event.inputs.wifi_ssid }} / ${{ github.event.inputs.wifi_password }}
+          APN: ${{ github.event.inputs.apn }}
+          IP: 192.168.1.1
           
-          ### 📦 Flashing
-          ```bash
+          📦 Flashing:
           fastboot flash boot openwrt-*.itb
           fastboot flash rootfs openwrt-*.img
           fastboot reboot
-          ```
           
           ⚠️ Use at your own risk.
         files: |
