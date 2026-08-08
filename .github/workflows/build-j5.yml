@@ -1,4 +1,4 @@
-name: 🔨 Build ImmortalWrt for Samsung J5 (MSM8916)
+name: 🔨 Build ImmortalWrt untuk Samsung J5 (MSM8916)
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ on:
         required: true
         default: '12345678'
       apn:
-        description: '📡 APN for 4G/LTE'
+        description: '📡 APN untuk 4G/LTE'
         required: true
         default: 'internet'
 
@@ -26,7 +26,7 @@ jobs:
       actions: read
 
     steps:
-    - name: ⚙️ Setup Build Environment
+    - name: ⚙️ Setup Lingkungan Build
       run: |
         sudo apt-get update -y
         sudo apt-get install -y \
@@ -37,9 +37,9 @@ jobs:
         
         sudo ln -sf /usr/bin/python3 /usr/bin/python
         pip3 install --upgrade pip setuptools wheel
-        echo "✅ Build environment ready!"
+        echo "✅ Lingkungan build siap!"
 
-    - name: 💾 Add swap space
+    - name: 💾 Tambah swap space
       run: |
         free -h
         if ! swapon --show | grep -q "/swapfile"; then
@@ -50,7 +50,7 @@ jobs:
         fi
         free -h
 
-    - name: 📥 Checkout repository
+    - name: 📥 Clone repository
       uses: actions/checkout@v4
 
     - name: 🔄 Update feeds
@@ -58,25 +58,30 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: 📄 Add Samsung J5 Device Tree
+    - name: 📄 Tambahkan Device Tree Samsung J5
       run: |
-        # Path yang benar untuk msm89xx target
-        DTS_DIR="target/linux/msm89xx/files-6.18/arch/arm64/boot/dts/qcom"
-        mkdir -p "$DTS_DIR"
+        # ✅ PATH YANG BENAR: dts-6.18, BUKAN files-6.18
+        KERNEL_DTS_DIR="target/linux/msm89xx/dts-6.18/arch/arm64/boot/dts/qcom"
+        mkdir -p "$KERNEL_DTS_DIR"
         
-        echo "📂 DTS_DIR: $DTS_DIR"
+        echo "📂 Lokasi DTS: $KERNEL_DTS_DIR"
         
-        # Download DTS files
-        curl -s -o "$DTS_DIR/msm8916-samsung-j5-common.dtsi" \
+        # Download file DTS
+        curl -s -o "$KERNEL_DTS_DIR/msm8916-samsung-j5-common.dtsi" \
           https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5-common.dtsi
         
-        curl -s -o "$DTS_DIR/msm8916-samsung-j5.dts" \
+        curl -s -o "$KERNEL_DTS_DIR/msm8916-samsung-j5.dts" \
           https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts
         
-        echo "✅ DTS files added:"
-        ls -la "$DTS_DIR/"
+        echo "✅ File DTS berhasil ditambahkan:"
+        ls -la "$KERNEL_DTS_DIR/"
+        
+        # Tambahkan file include yang diperlukan
+        mkdir -p "target/linux/msm89xx/dts-6.18/include/dt-bindings/"
+        curl -s -o "target/linux/msm89xx/dts-6.18/include/dt-bindings/gpio.h" \
+          https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/gpio/gpio.h
 
-    - name: 📝 Add Samsung J5 to msm8916.mk
+    - name: 📝 Tambahkan Samsung J5 ke msm8916.mk
       run: |
         mkdir -p target/linux/msm89xx/image
         
@@ -113,7 +118,8 @@ jobs:
         TARGET_DEVICES += samsung-j5
         EOF
         
-        echo "✅ msm8916.mk created"
+        echo "✅ msm8916.mk berhasil dibuat"
+        cat target/linux/msm89xx/image/msm8916.mk
 
     - name: ⚙️ Generate .config
       run: |
@@ -167,7 +173,6 @@ jobs:
         
         CONFIG_PACKAGE_modemmanager=y
         CONFIG_PACKAGE_luci-proto-modemmanager=y
-        CONFIG_PACKAGE_luci-app-modemmanager=y
         CONFIG_PACKAGE_mobile-broadband-provider-info=y
         CONFIG_PACKAGE_libmbim=y
         CONFIG_PACKAGE_libqmi=y
@@ -188,21 +193,21 @@ jobs:
         grep "CONFIG_TARGET" .config | grep -v "is not set" || true
         grep "samsung-j5" .config | grep -v "is not set" || true
 
-    - name: 📥 Download sources
+    - name: 📥 Download sumber
       run: |
         make download -j8 V=s
 
     - name: 🔨 Build firmware
       run: |
-        echo "🚀 Building for Samsung J5 (msm89xx)..."
-        make -j4 V=s || make -j1 V=s
-        echo "✅ Build completed!"
+        echo "🚀 Build untuk Samsung J5 (msm89xx)..."
+        make -j$(nproc) V=s || make -j1 V=s
+        echo "✅ Build selesai!"
 
-    - name: 📂 List build output
+    - name: 📂 Cek hasil build
       if: always()
       run: |
         echo "📂 MENCARI FILE HASIL BUILD"
-        find bin/targets/ -name "*.img" -o -name "*.itb" -o -name "*.dtb" 2>/dev/null || echo "Tidak ada file"
+        find bin/targets/ -type f \( -name "*.img" -o -name "*.itb" -o -name "*.dtb" -o -name "*.bin" -o -name "*.tar" \) 2>/dev/null | head -50 || echo "Tidak ada file"
 
     - name: 📤 Upload firmware
       if: success()
@@ -217,7 +222,7 @@ jobs:
           .config
         retention-days: 7
 
-    - name: 📤 Upload logs (if failed)
+    - name: 📤 Upload log (jika gagal)
       if: failure()
       uses: actions/upload-artifact@v4
       with:
@@ -227,25 +232,25 @@ jobs:
           .config
         retention-days: 7
 
-    - name: 🚀 Create Release
+    - name: 🚀 Buat Release
       if: success()
       uses: softprops/action-gh-release@v1
       with:
         tag_name: j5-msm8916-${{ github.run_number }}
         name: 📦 ImmortalWrt J5 MSM8916 #${{ github.run_number }}
         body: |
-          📱 ImmortalWrt for Samsung J5 (MSM8916)
+          📱 ImmortalWrt untuk Samsung J5 (MSM8916)
           
           WiFi: ${{ github.event.inputs.wifi_ssid }} / ${{ github.event.inputs.wifi_password }}
           APN: ${{ github.event.inputs.apn }}
           IP: 192.168.1.1
           
-          📦 Flashing:
+          📦 Cara Flashing:
           fastboot flash boot openwrt-*.itb
           fastboot flash rootfs openwrt-*.img
           fastboot reboot
           
-          ⚠️ Use at your own risk.
+          ⚠️ Gunakan dengan risiko sendiri.
         files: |
           bin/targets/msm89xx/msm8916/*.img
           bin/targets/msm89xx/msm8916/*.itb
