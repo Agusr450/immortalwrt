@@ -53,6 +53,14 @@ jobs:
     - name: 📥 Checkout repository
       uses: actions/checkout@v4
 
+    - name: 📋 Cek target yang tersedia
+      run: |
+        echo "📋 Cek direktori target/linux/:"
+        ls -la target/linux/ || true
+        echo ""
+        echo "📋 Cari target qcom/msm:"
+        ls -la target/linux/ | grep -E "qcom|msm|arm" || true
+
     - name: 🔄 Update feeds
       run: |
         ./scripts/feeds update -a
@@ -60,7 +68,7 @@ jobs:
 
     - name: 📄 Add Samsung J5 Device Tree
       run: |
-        # Cari direktori DTS yang tepat
+        # Cari direktori DTS yang tepat - coba beberapa lokasi
         DTS_DIR=""
         for path in target/linux/*/files-*/arch/arm64/boot/dts/qcom; do
           if mkdir -p "$path" 2>/dev/null; then
@@ -69,7 +77,17 @@ jobs:
           fi
         done
         
-        # Fallback
+        # Jika tidak ditemukan, coba di generic
+        if [ -z "$DTS_DIR" ]; then
+          for path in target/linux/generic/files-*/arch/arm64/boot/dts/qcom; do
+            if mkdir -p "$path" 2>/dev/null; then
+              DTS_DIR="$path"
+              break
+            fi
+          done
+        fi
+        
+        # Fallback terakhir
         if [ -z "$DTS_DIR" ]; then
           mkdir -p target/linux/generic/files-6.6/arch/arm64/boot/dts/qcom
           DTS_DIR="target/linux/generic/files-6.6/arch/arm64/boot/dts/qcom"
@@ -85,35 +103,37 @@ jobs:
         
         echo "✅ DTS files added"
 
-    - name: 📝 Add Samsung J5 to msm8916.mk
+    - name: 📝 Add Samsung J5 to device definition
       run: |
-        # Cari file msm8916.mk
+        # Cari file definisi perangkat yang tepat
         MK_FILE=""
-        for path in target/linux/*/image/msm8916.mk; do
-          if [ -f "$path" ]; then
-            MK_FILE="$path"
-            break
-          fi
-        done
         
+        # Coba di target/linux/msm89xx
+        if [ -f "target/linux/msm89xx/image/msm8916.mk" ]; then
+          MK_FILE="target/linux/msm89xx/image/msm8916.mk"
+        elif [ -f "target/linux/qcom/image/msm8916.mk" ]; then
+          MK_FILE="target/linux/qcom/image/msm8916.mk"
+        elif [ -f "target/linux/generic/image/msm8916.mk" ]; then
+          MK_FILE="target/linux/generic/image/msm8916.mk"
+        fi
+        
+        # Jika tidak ada, buat baru di lokasi yang tepat
         if [ -z "$MK_FILE" ]; then
-          # Cari target yang tepat
-          TARGET_DIR=""
+          # Cari direktori image yang tepat
+          IMAGE_DIR=""
           for dir in target/linux/*/image; do
             if [ -d "$dir" ]; then
-              TARGET_DIR="$dir"
+              IMAGE_DIR="$dir"
               break
             fi
           done
-          MK_FILE="$TARGET_DIR/msm8916.mk"
+          MK_FILE="$IMAGE_DIR/msm8916.mk"
         fi
         
+        mkdir -p "$(dirname "$MK_FILE")"
         echo "📂 MK_FILE: $MK_FILE"
         
-        # Jika file tidak ada, buat baru
-        if [ ! -f "$MK_FILE" ]; then
-          mkdir -p "$(dirname "$MK_FILE")"
-          cat > "$MK_FILE" << 'EOF'
+        cat > "$MK_FILE" << 'EOF'
         include $(TOPDIR)/rules.mk
         
         DEVICE_VARS += DEVICE_DTS
@@ -145,82 +165,54 @@ jobs:
         endef
         TARGET_DEVICES += samsung-j5
         EOF
-        else
-          # Tambahkan ke file yang sudah ada (hindari duplikasi)
-          if ! grep -q "samsung-j5" "$MK_FILE"; then
-            cat >> "$MK_FILE" << 'EOF'
         
-        define Device/samsung-j5
-          $(Device/qcom-msm8916)
-          DEVICE_VENDOR := Samsung
-          DEVICE_MODEL := Galaxy J5
-          DEVICE_DTS := qcom/msm8916-samsung-j5
-          IMAGE_SIZE := 1024m
-          SUPPORTED_DEVICES := samsung-j5
-          DEVICE_PACKAGES := kmod-usb-net-qmi-wwan kmod-usb-serial-option \
-                             kmod-usb-serial-qualcomm usbutils modemmanager \
-                             kmod-usb-phy-qcom-msm dnsmasq-full
-        endef
-        TARGET_DEVICES += samsung-j5
-        EOF
-          fi
-        fi
-        
-        echo "✅ Samsung J5 added to $MK_FILE"
-        cat "$MK_FILE"
+        echo "✅ Device definition added to $MK_FILE"
 
     - name: ⚙️ Generate .config
       run: |
-        cat > .config << 'EOF'
-        # ============================================================
-        # TARGET: ARM64 / MSM8916 untuk Samsung J5
-        # ============================================================
+        # Cari target yang tersedia
+        TARGET=""
+        if [ -d "target/linux/msm89xx" ]; then
+          TARGET="msm89xx"
+        elif [ -d "target/linux/qcom" ]; then
+          TARGET="qcom"
+        elif [ -d "target/linux/arm64" ]; then
+          TARGET="arm64"
+        fi
         
-        CONFIG_TARGET_arm64=y
-        CONFIG_TARGET_arm64_generic=y
-        CONFIG_TARGET_arm64_generic_DEVICE_samsung-j5=y
+        echo "📋 Target yang digunakan: $TARGET"
         
-        # Aktifkan subtarget MSM89xx
-        CONFIG_TARGET_arm64_generic_SUBTARGET_msm89xx=y
+        if [ "$TARGET" = "msm89xx" ]; then
+          cat > .config << 'EOF'
+        CONFIG_TARGET_msm89xx=y
+        CONFIG_TARGET_msm89xx_msm8916=y
+        CONFIG_TARGET_msm89xx_msm8916_DEVICE_samsung-j5=y
         
-        # Root filesystem
         CONFIG_TARGET_ROOTFS_SQUASHFS=y
         CONFIG_TARGET_IMAGES_GZIP=y
         CONFIG_TARGET_IMAGES_ITB=y
         
-        # Kernel dengan Device Tree untuk J5
         CONFIG_KERNEL_DEVICETREE=y
         CONFIG_KERNEL_DTBS="qcom/msm8916-samsung-j5.dtb"
         CONFIG_KERNEL_FIT_IMAGE=y
         CONFIG_KERNEL_FIT_SIGNATURE=n
         
-        # Optimasi ukuran
         CONFIG_TARGET_OPTIMIZATION="-Os -pipe -fno-caller-saves -fno-plt"
         CONFIG_STRIP_KERNEL_EXPORTS=y
         CONFIG_USE_SSTRIP=y
         CONFIG_STRIP_ALL=y
         
-        # ============================================================
-        # BASE SYSTEM
-        # ============================================================
         CONFIG_PACKAGE_busybox=y
         CONFIG_PACKAGE_busybox-config-mdev=y
         CONFIG_PACKAGE_dropbear=y
         CONFIG_PACKAGE_firewall=y
         CONFIG_PACKAGE_dnsmasq-full=y
-        # CONFIG_PACKAGE_dnsmasq is not set
         
-        # ============================================================
-        # LUCI - LIGHT
-        # ============================================================
         CONFIG_PACKAGE_luci-light=y
         CONFIG_PACKAGE_luci-theme-bootstrap=y
         CONFIG_PACKAGE_luci-app-firewall=y
         CONFIG_PACKAGE_luci-app-opkg=y
         
-        # ============================================================
-        # WIFI
-        # ============================================================
         CONFIG_PACKAGE_iw=y
         CONFIG_PACKAGE_iwinfo=y
         CONFIG_PACKAGE_wpad-basic=y
@@ -228,9 +220,6 @@ jobs:
         CONFIG_PACKAGE_wireless-tools=y
         CONFIG_PACKAGE_wpa-supplicant=y
         
-        # ============================================================
-        # USB + MODEM 4G (MSM8916)
-        # ============================================================
         CONFIG_PACKAGE_kmod-usb-core=y
         CONFIG_PACKAGE_kmod-usb-net=y
         CONFIG_PACKAGE_kmod-usb-net-qmi-wwan=y
@@ -243,7 +232,6 @@ jobs:
         CONFIG_PACKAGE_usbutils=y
         CONFIG_PACKAGE_kmod-usb-phy-qcom-msm=y
         
-        # ModemManager
         CONFIG_PACKAGE_modemmanager=y
         CONFIG_PACKAGE_luci-proto-modemmanager=y
         CONFIG_PACKAGE_luci-app-modemmanager=y
@@ -253,27 +241,68 @@ jobs:
         CONFIG_PACKAGE_umbim=y
         CONFIG_PACKAGE_uqmi=y
         
-        # ============================================================
-        # TOOLS DASAR
-        # ============================================================
         CONFIG_PACKAGE_curl=y
         CONFIG_PACKAGE_wget=y
         CONFIG_PACKAGE_ip-full=y
         
-        # ============================================================
-        # BUSYBOX
-        # ============================================================
         CONFIG_BUSYBOX_DEFAULT_FEATURE_EXTRA_QUIET=y
         CONFIG_BUSYBOX_DEFAULT_FEATURE_SYSLOG=y
-        
-        # ============================================================
-        # TIDAK TERMASUK
-        # ============================================================
-        # CONFIG_PACKAGE_kmod-wireguard is not set
-        # CONFIG_PACKAGE_wifischedule is not set
-        # CONFIG_PACKAGE_htop is not set
-        # CONFIG_PACKAGE_nano is not set
         EOF
+        elif [ "$TARGET" = "qcom" ]; then
+          cat > .config << 'EOF'
+        CONFIG_TARGET_qcom=y
+        CONFIG_TARGET_qcom_msm89xx=y
+        CONFIG_TARGET_qcom_msm89xx_DEVICE_samsung-j5=y
+        
+        CONFIG_TARGET_ROOTFS_SQUASHFS=y
+        CONFIG_TARGET_IMAGES_GZIP=y
+        CONFIG_TARGET_IMAGES_ITB=y
+        
+        CONFIG_KERNEL_DEVICETREE=y
+        CONFIG_KERNEL_DTBS="qcom/msm8916-samsung-j5.dtb"
+        CONFIG_KERNEL_FIT_IMAGE=y
+        
+        CONFIG_TARGET_OPTIMIZATION="-Os -pipe -fno-caller-saves -fno-plt"
+        CONFIG_STRIP_KERNEL_EXPORTS=y
+        CONFIG_USE_SSTRIP=y
+        CONFIG_STRIP_ALL=y
+        
+        CONFIG_PACKAGE_busybox=y
+        CONFIG_PACKAGE_dropbear=y
+        CONFIG_PACKAGE_firewall=y
+        CONFIG_PACKAGE_dnsmasq-full=y
+        CONFIG_PACKAGE_luci-light=y
+        CONFIG_PACKAGE_luci-theme-bootstrap=y
+        CONFIG_PACKAGE_luci-app-firewall=y
+        CONFIG_PACKAGE_iw=y
+        CONFIG_PACKAGE_iwinfo=y
+        CONFIG_PACKAGE_wpad-basic=y
+        CONFIG_PACKAGE_hostapd=y
+        CONFIG_PACKAGE_wireless-tools=y
+        CONFIG_PACKAGE_kmod-usb-core=y
+        CONFIG_PACKAGE_kmod-usb-net=y
+        CONFIG_PACKAGE_kmod-usb-net-qmi-wwan=y
+        CONFIG_PACKAGE_kmod-usb-serial=y
+        CONFIG_PACKAGE_kmod-usb-serial-option=y
+        CONFIG_PACKAGE_kmod-usb-serial-qualcomm=y
+        CONFIG_PACKAGE_usbutils=y
+        CONFIG_PACKAGE_kmod-usb-phy-qcom-msm=y
+        CONFIG_PACKAGE_modemmanager=y
+        CONFIG_PACKAGE_luci-proto-modemmanager=y
+        CONFIG_PACKAGE_luci-app-modemmanager=y
+        CONFIG_PACKAGE_libmbim=y
+        CONFIG_PACKAGE_libqmi=y
+        CONFIG_PACKAGE_curl=y
+        CONFIG_PACKAGE_wget=y
+        CONFIG_BUSYBOX_DEFAULT_FEATURE_EXTRA_QUIET=y
+        CONFIG_BUSYBOX_DEFAULT_FEATURE_SYSLOG=y
+        EOF
+        else
+          echo "❌ Tidak ada target yang cocok untuk MSM8916!"
+          echo "Target yang tersedia:"
+          ls -la target/linux/
+          exit 1
+        fi
         
         make defconfig
         
@@ -310,12 +339,12 @@ jobs:
         ls -la bin/targets/ 2>/dev/null || echo "Folder bin/targets/ tidak ditemukan"
         
         echo ""
-        echo "📂 3. Cek folder arm64:"
-        ls -la bin/targets/arm64/ 2>/dev/null || echo "Folder arm64 tidak ditemukan"
+        echo "📂 3. Cek folder msm89xx:"
+        ls -la bin/targets/msm89xx/ 2>/dev/null || echo "Folder msm89xx tidak ditemukan"
         
         echo ""
-        echo "📂 4. Cek folder arm64/generic:"
-        ls -la bin/targets/arm64/generic/ 2>/dev/null || echo "Folder tidak ditemukan"
+        echo "📂 4. Cek folder msm89xx/msm8916:"
+        ls -la bin/targets/msm89xx/msm8916/ 2>/dev/null || echo "Folder msm8916 tidak ditemukan"
 
     - name: 📤 Upload firmware
       if: success()
@@ -323,11 +352,11 @@ jobs:
       with:
         name: immortalwrt-j5-msm8916-${{ github.run_number }}
         path: |
-          bin/targets/arm64/generic/*.img
-          bin/targets/arm64/generic/*.itb
-          bin/targets/arm64/generic/*.bin
-          bin/targets/arm64/generic/*.dtb
-          bin/targets/arm64/generic/*.manifest
+          bin/targets/msm89xx/msm8916/*.img
+          bin/targets/msm89xx/msm8916/*.itb
+          bin/targets/msm89xx/msm8916/*.bin
+          bin/targets/msm89xx/msm8916/*.dtb
+          bin/targets/msm89xx/msm8916/*.manifest
           .config
         retention-days: 7
 
@@ -350,50 +379,23 @@ jobs:
         body: |
           ## 📱 ImmortalWrt for Samsung J5 (MSM8916)
           
-          ### 📊 Build Info
-          | Item | Value |
-          |------|-------|
-          | **Device** | Samsung Galaxy J5 |
-          | **SoC** | Qualcomm MSM8916 |
-          | **Architecture** | ARM64 / aarch64 |
-          | **Bootloader** | Compatible with lk2nd |
-          | **DNS** | dnsmasq-full |
-          | **WiFi** | `${{ github.event.inputs.wifi_ssid }}` |
-          | **APN** | `${{ github.event.inputs.apn }}` |
+          **WiFi**: `${{ github.event.inputs.wifi_ssid }}` / `${{ github.event.inputs.wifi_password }}`
+          **APN**: `${{ github.event.inputs.apn }}`
+          **IP**: 192.168.1.1
           
-          ### 📦 Included
-          - ✅ Kernel + Device Tree for J5
-          - ✅ BusyBox, Dropbear, Firewall
-          - ✅ dnsmasq-full (DNS + DHCP)
-          - ✅ LuCI Light
-          - ✅ WiFi (hostapd + wpad-basic)
-          - ✅ Modem 4G (ModemManager + QMI)
-          - ✅ curl + wget + ip-full
-          
-          ### 📁 File Types
-          - `*.itb` - FIT Image (for U-Boot/lk2nd)
-          - `*.img` - Combined firmware
-          - `*.dtb` - Device Tree Blob
-          
-          ### ⚠️ Flashing with lk2nd
+          ### 📦 Flashing
           ```bash
           fastboot flash boot openwrt-*.itb
           fastboot flash rootfs openwrt-*.img
           fastboot reboot
           ```
           
-          ### 🌐 Defaults
-          - IP: 192.168.1.1
-          - WiFi: `${{ github.event.inputs.wifi_ssid }}` / `${{ github.event.inputs.wifi_password }}`
-          - APN: `${{ github.event.inputs.apn }}`
-          
-          ---
-          **⚠️ DISCLAIMER**: Use at your own risk.
+          ⚠️ Use at your own risk.
         files: |
-          bin/targets/arm64/generic/*.img
-          bin/targets/arm64/generic/*.itb
-          bin/targets/arm64/generic/*.bin
-          bin/targets/arm64/generic/*.dtb
+          bin/targets/msm89xx/msm8916/*.img
+          bin/targets/msm89xx/msm8916/*.itb
+          bin/targets/msm89xx/msm8916/*.bin
+          bin/targets/msm89xx/msm8916/*.dtb
         draft: false
         prerelease: true
       env:
