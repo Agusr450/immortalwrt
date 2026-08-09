@@ -1,4 +1,4 @@
-name: 📥 Download & Extract DTS untuk Samsung J5
+name: 📥 Download DTS & Push ke Repository
 
 on:
   workflow_dispatch:
@@ -7,9 +7,11 @@ env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
 jobs:
-  download-extract:
+  download-push:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      contents: write
 
     steps:
     - name: ⚙️ Setup
@@ -19,113 +21,91 @@ jobs:
 
     - name: 📥 Checkout repository
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     # ============================================
-    # DOWNLOAD & EKSTRAK DTS
+    # DOWNLOAD DTS
     # ============================================
-    - name: 📄 Download & Extract DTS
+    - name: 📄 Download DTS
       run: |
         echo "📥 Downloading DTS files for Samsung J5..."
         
-        # Buat direktori DTS
+        # Buat direktori
         DTS_DIR="target/linux/msm89xx/dts-6.18/arch/arm64/boot/dts/qcom"
         mkdir -p "$DTS_DIR"
         
-        DT_BINDINGS_DIR="target/linux/msm89xx/dts-6.18/include/dt-bindings"
-        mkdir -p "$DT_BINDINGS_DIR"
+        DT_DIR="target/linux/msm89xx/dts-6.18/include/dt-bindings"
+        mkdir -p "$DT_DIR"
+        mkdir -p "$DT_DIR/sound"
         
         # ==========================================
-        # 1. DOWNLOAD DTS FILE
+        # DOWNLOAD DTS
         # ==========================================
         echo ""
         echo "📥 Downloading DTS files..."
         
-        # Main DTS
-        echo "Downloading msm8916-samsung-j5.dts..."
-        wget -q -O "$DTS_DIR/msm8916-samsung-j5.dts" \
-          https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts
-        
-        # Common DTSI
-        echo "Downloading msm8916-samsung-j5-common.dtsi..."
-        wget -q -O "$DTS_DIR/msm8916-samsung-j5-common.dtsi" \
-          https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5-common.dtsi
+        cd "$DTS_DIR"
+        wget -q https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts
+        wget -q https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5-common.dtsi
+        cd -
         
         # ==========================================
-        # 2. DOWNLOAD DT BINDINGS
+        # DOWNLOAD BINDINGS
         # ==========================================
         echo ""
         echo "📥 Downloading DT bindings..."
         
-        # GPIO
-        echo "Downloading gpio.h..."
-        wget -q -O "$DT_BINDINGS_DIR/gpio.h" \
-          https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/gpio/gpio.h
-        
-        # Clock
-        echo "Downloading clock.h..."
-        wget -q -O "$DT_BINDINGS_DIR/clock.h" \
-          https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/clock/qcom,gcc-msm8916.h
-        
-        # RPM Clock
-        echo "Downloading rpmcc.h..."
-        wget -q -O "$DT_BINDINGS_DIR/rpmcc.h" \
-          https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/clock/qcom,rpmcc.h
-        
-        # Interrupt
-        echo "Downloading interrupt.h..."
-        wget -q -O "$DT_BINDINGS_DIR/interrupt.h" \
-          https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/interrupt-controller/irq.h
-        
-        # Power
-        echo "Downloading power.h..."
-        wget -q -O "$DT_BINDINGS_DIR/power.h" \
-          https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/power/qcom-rpmpd.h
+        cd "$DT_DIR"
+        wget -q https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/gpio/gpio.h
+        wget -q https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/clock/qcom,gcc-msm8916.h
+        wget -q https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/clock/qcom,rpmcc.h
+        wget -q https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/interrupt-controller/irq.h
+        wget -q https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/power/qcom-rpmpd.h
+        cd -
         
         # ==========================================
-        # 3. DOWNLOAD SOUND BINDINGS
+        # SOUND BINDINGS
         # ==========================================
         echo ""
         echo "📥 Downloading sound bindings..."
         
-        mkdir -p "$DT_BINDINGS_DIR/sound"
-        
-        # Download or create dummy files
-        echo "Downloading qcom,q6afe.h..."
-        wget -q -O "$DT_BINDINGS_DIR/sound/qcom,q6afe.h" \
-          https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/sound/qcom,q6afe.h || echo "/* dummy */" > "$DT_BINDINGS_DIR/sound/qcom,q6afe.h"
-        
-        echo "Downloading qcom,q6asm.h..."
-        wget -q -O "$DT_BINDINGS_DIR/sound/qcom,q6asm.h" \
-          https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/sound/qcom,q6asm.h || echo "/* dummy */" > "$DT_BINDINGS_DIR/sound/qcom,q6asm.h"
-        
-        echo "Creating dummy qcom,q6adm.h..."
-        echo "/* dummy for qcom,q6adm.h */" > "$DT_BINDINGS_DIR/sound/qcom,q6adm.h"
+        cd "$DT_DIR/sound"
+        wget -q https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/sound/qcom,q6afe.h 2>/dev/null || echo "/* dummy for q6afe */" > qcom,q6afe.h
+        wget -q https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/sound/qcom,q6asm.h 2>/dev/null || echo "/* dummy for q6asm */" > qcom,q6asm.h
+        echo "/* dummy for q6adm */" > qcom,q6adm.h
+        cd -
         
         echo ""
         echo "✅ Download complete!"
 
     # ============================================
-    # VERIFY FILES
+    # VERIFY
     # ============================================
     - name: 📂 Verify downloaded files
       run: |
         echo "📂 Verifying downloaded files..."
         echo "================================"
         
-        DTS_DIR="target/linux/msm89xx/dts-6.18/arch/arm64/boot/dts/qcom"
-        DT_BINDINGS_DIR="target/linux/msm89xx/dts-6.18/include/dt-bindings"
+        DTS_DIR="target/linux/msm89xx/dts-6.18"
         
-        echo ""
-        echo "📁 DTS files:"
-        ls -la "$DTS_DIR/" 2>/dev/null || echo "Directory not found"
-        
-        echo ""
-        echo "📁 DT Bindings:"
-        ls -la "$DT_BINDINGS_DIR/" 2>/dev/null | grep -E "\.h$" || echo "No header files"
-        
-        echo ""
-        echo "📁 Sound bindings:"
-        ls -la "$DT_BINDINGS_DIR/sound/" 2>/dev/null || echo "No sound directory"
+        if [ -d "$DTS_DIR" ]; then
+          echo "✅ DTS directory exists!"
+          echo ""
+          echo "📁 DTS files:"
+          ls -la "$DTS_DIR/arch/arm64/boot/dts/qcom/"
+          
+          echo ""
+          echo "📁 DT bindings:"
+          ls -la "$DTS_DIR/include/dt-bindings/"
+          
+          echo ""
+          echo "📁 Sound bindings:"
+          ls -la "$DTS_DIR/include/dt-bindings/sound/"
+        else
+          echo "❌ DTS directory not found!"
+          exit 1
+        fi
 
     # ============================================
     # CHECK DTS CONTENT
@@ -143,10 +123,6 @@ jobs:
           ls -lh "$DTS_FILE"
           
           echo ""
-          echo "📋 DTS content (first 20 lines):"
-          head -20 "$DTS_FILE"
-          
-          echo ""
           echo "📋 Includes:"
           grep "^#include" "$DTS_FILE" || echo "No includes found"
         else
@@ -155,68 +131,45 @@ jobs:
         fi
 
     # ============================================
-    # COPY TO KERNEL BUILD DIR
+    # COMMIT & PUSH
     # ============================================
-    - name: 📥 Copy to kernel build directory
+    - name: 📝 Commit & Push
       run: |
-        echo "📥 Copying DTS to kernel build directory..."
+        echo "📝 Committing DTS files..."
         
-        KERNEL_DTS_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35/arch/arm64/boot/dts/qcom"
-        mkdir -p "$KERNEL_DTS_DIR"
+        # Configure git
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
         
-        # Copy DTS files
-        cp -r target/linux/msm89xx/dts-6.18/arch/arm64/boot/dts/qcom/* "$KERNEL_DTS_DIR/" 2>/dev/null || true
+        # Add files
+        git add target/linux/msm89xx/dts-6.18/
         
-        # Copy includes
-        KERNEL_INCLUDE_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35/include/dt-bindings"
-        mkdir -p "$KERNEL_INCLUDE_DIR"
-        cp -r target/linux/msm89xx/dts-6.18/include/dt-bindings/* "$KERNEL_INCLUDE_DIR/" 2>/dev/null || true
-        
-        echo "✅ Files copied to kernel build directory"
-        ls -la "$KERNEL_DTS_DIR/" 2>/dev/null || echo "Directory not found"
+        # Check if there are changes
+        if git diff --staged --quiet; then
+          echo "✅ No changes to commit"
+        else
+          echo "📝 Changes detected, committing..."
+          git commit -m "Add DTS for Samsung J5 (MSM8916)
+          
+          - msm8916-samsung-j5.dts
+          - msm8916-samsung-j5-common.dtsi
+          - dt-bindings includes
+          
+          Source: https://github.com/torvalds/linux"
+          
+          echo ""
+          echo "📤 Pushing to repository..."
+          git push origin HEAD:${{ github.ref_name }}
+          
+          echo "✅ Successfully pushed!"
+        fi
 
     # ============================================
-    # UPLOAD ARTIFACT
+    # UPLOAD ARTIFACT (Backup)
     # ============================================
-    - name: 📤 Upload DTS files
+    - name: 📤 Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: samsung-j5-dts
-        path: |
-          target/linux/msm89xx/dts-6.18/
-          .config
+        path: target/linux/msm89xx/dts-6.18/
         retention-days: 30
-
-    # ============================================
-    # CREATE RELEASE
-    # ============================================
-    - name: 🚀 Create Release
-      if: success()
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: samsung-j5-dts
-        name: 📦 Samsung J5 DTS Files
-        body: |
-          ## 📄 Device Tree Source untuk Samsung J5 (MSM8916)
-          
-          ### 📁 Isi:
-          - `msm8916-samsung-j5.dts` - Main DTS
-          - `msm8916-samsung-j5-common.dtsi` - Common includes
-          - `dt-bindings/` - Required header files
-          
-          ### 📂 Lokasi:
-          ```
-          target/linux/msm89xx/dts-6.18/
-          ```
-          
-          ### 🚀 Next Step:
-          Jalankan build firmware:
-          ```bash
-          make -j$(nproc) V=s
-          ```
-        files: |
-          target/linux/msm89xx/dts-6.18/
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
