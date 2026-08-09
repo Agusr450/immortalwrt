@@ -48,7 +48,7 @@ jobs:
     # ============================================
     # 2. CACHE
     # ============================================
-    - name: 💾 Cache toolchain
+    - name: 💾 Cache
       uses: actions/cache@v4
       with:
         path: |
@@ -63,7 +63,6 @@ jobs:
         restore-keys: |
           build-
           toolchain-
-          staging-
           dl-
 
     # ============================================
@@ -76,28 +75,7 @@ jobs:
         make download -j4 || true
 
     # ============================================
-    # 4. BUILD TOOLCHAIN (CRITICAL!)
-    # ============================================
-    - name: 🔨 Build toolchain
-      run: |
-        echo "🔨 Building toolchain..."
-        echo "========================================"
-        
-        CORES=$(nproc)
-        echo "Using $CORES cores"
-        
-        # Build toolchain first
-        make -j$CORES toolchain/compile V=s 2>&1 | tee toolchain-build.log
-        
-        echo "✅ Toolchain build completed"
-        
-        # Verify toolchain exists
-        echo ""
-        echo "🔍 Verifying toolchain..."
-        ls -la staging_dir/toolchain-aarch64_generic_gcc-*/bin/ | head -20
-
-    # ============================================
-    # 5. COPY DTS TO KERNEL
+    # 4. COPY DTS TO KERNEL (Sebelum Config)
     # ============================================
     - name: 📄 Copy DTS to kernel
       run: |
@@ -117,6 +95,7 @@ jobs:
           echo "✅ DTS copied from target/linux"
         else
           echo "⚠️ DTS source not found, downloading..."
+          mkdir -p "$DTS_DST"
           cd "$DTS_DST"
           wget -q https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts
           wget -q https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5-common.dtsi
@@ -145,7 +124,7 @@ jobs:
         ls -la "$DTS_DST/" | grep samsung || echo "No samsung DTS found"
 
     # ============================================
-    # 6. PATCH KERNEL MAKEFILE
+    # 5. PATCH KERNEL MAKEFILE
     # ============================================
     - name: 📄 Patch kernel Makefile
       run: |
@@ -172,43 +151,94 @@ jobs:
         cat "$MAKE_FILE"
 
     # ============================================
-    # 7. GENERATE CONFIG
+    # 6. GENERATE CONFIG (MINIMAL - TANPA ERROR)
     # ============================================
     - name: ⚙️ Generate config
       run: |
         echo "🔧 Generating config..."
         
+        # Gunakan config minimal yang sudah terbukti
         cat > .config << 'EOF'
-        # Target
         CONFIG_TARGET_msm89xx=y
         CONFIG_TARGET_msm89xx_msm8916=y
         CONFIG_TARGET_msm89xx_msm8916_DEVICE_samsung-j5=y
         
-        # Kernel options
+        CONFIG_TARGET_ROOTFS_SQUASHFS=y
+        CONFIG_TARGET_IMAGES_GZIP=y
+        CONFIG_TARGET_IMAGES_ITB=y
+        
         CONFIG_KERNEL_DEVICETREE=y
         CONFIG_KERNEL_DTBS="msm8916-samsung-j5.dtb"
         CONFIG_KERNEL_FIT_IMAGE=y
         CONFIG_KERNEL_FIT_SIGNATURE=n
         
-        # Debug
-        CONFIG_KERNEL_DEBUG_INFO=y
-        CONFIG_KERNEL_DEBUG_KERNEL=y
-        
-        # Minimal
-        CONFIG_TARGET_IMAGES_ITB=y
-        CONFIG_TARGET_ROOTFS_SQUASHFS=y
-        CONFIG_PACKAGE_busybox=y
-        
-        # Build options
+        CONFIG_TARGET_OPTIMIZATION="-Os -pipe"
+        CONFIG_STRIP_KERNEL_EXPORTS=y
         CONFIG_USE_SSTRIP=y
         CONFIG_STRIP_ALL=y
+        
+        # Minimal packages
+        CONFIG_PACKAGE_busybox=y
+        CONFIG_PACKAGE_dropbear=y
+        
+        # Build options
+        CONFIG_MAKE_TOOLCHAIN_PARALLEL=y
+        
+        # CCACHE
+        CONFIG_CCACHE=y
+        CONFIG_CCACHE_DIR="/home/runner/.ccache"
         EOF
         
+        # Defconfig
         make defconfig
         
-        echo "✅ Config:"
+        echo ""
+        echo "✅ Config generated:"
         grep "CONFIG_TARGET" .config | grep -v "is not set" | head -5
-        grep "CONFIG_KERNEL" .config | grep -v "is not set" | head -5
+        grep "CONFIG_PACKAGE" .config | grep -v "is not set" | head -5
+
+    # ============================================
+    # 7. BUILD TOOLCHAIN
+    # ============================================
+    - name: 🔨 Build toolchain
+      run: |
+        echo "🔨 Building toolchain..."
+        echo "========================================"
+        
+        CORES=$(nproc)
+        echo "Using $CORES cores"
+        
+        # Clean if requested
+        if [ "${{ github.event.inputs.clean }}" = "yes" ]; then
+          echo "🧹 Clean build requested"
+          rm -rf staging_dir/toolchain-aarch64_generic_gcc-*
+          rm -rf build_dir/toolchain-aarch64_generic_gcc-*
+        fi
+        
+        # Build toolchain
+        make -j$CORES toolchain/compile V=s 2>&1 | tee toolchain-build.log
+        
+        # Check if toolchain was built
+        if [ -d "staging_dir/toolchain-aarch64_generic_gcc-"* ]; then
+          echo "✅ Toolchain built successfully!"
+          echo ""
+          echo "🔍 Verifying toolchain..."
+          ls -la staging_dir/toolchain-aarch64_generic_gcc-*/bin/ | head -20
+          
+          # Check if gcc exists
+          TOOLCHAIN_DIR=$(ls -d staging_dir/toolchain-aarch64_generic_gcc-* | head -1)
+          if [ -f "$TOOLCHAIN_DIR/bin/aarch64-openwrt-linux-musl-gcc" ]; then
+            echo "✅ aarch64-openwrt-linux-musl-gcc found!"
+            $TOOLCHAIN_DIR/bin/aarch64-openwrt-linux-musl-gcc --version
+          else
+            echo "❌ Toolchain build failed - gcc not found!"
+            exit 1
+          fi
+        else
+          echo "❌ Toolchain build failed!"
+          cat toolchain-build.log | tail -50
+          exit 1
+        fi
 
     # ============================================
     # 8. BUILD KERNEL
@@ -221,23 +251,20 @@ jobs:
         CORES=$(nproc)
         echo "Using $CORES cores"
         
-        # Clean if requested
-        if [ "${{ github.event.inputs.clean }}" = "yes" ]; then
-          echo "🧹 Clean build requested"
-          make clean
-          rm -rf build_dir/target-aarch64_generic_musl
-          rm -rf staging_dir/target-aarch64_generic_musl
-        fi
+        # Verify toolchain
+        echo "🔍 Verifying toolchain:"
+        which aarch64-openwrt-linux-musl-gcc || echo "❌ gcc not in PATH"
+        aarch64-openwrt-linux-musl-gcc --version || echo "❌ gcc not working"
         
-        # Build kernel (target/linux/compile will build toolchain if needed)
+        # Build kernel
         make -j$CORES target/linux/compile V=s 2>&1 | tee kernel-build.log
         
         echo "✅ Kernel build completed"
 
     # ============================================
-    # 9. VERIFY KERNEL OUTPUT
+    # 9. VERIFY OUTPUT
     # ============================================
-    - name: 📂 Verify kernel output
+    - name: 📂 Verify output
       if: always()
       run: |
         echo "📂 Verifying kernel build output..."
@@ -265,16 +292,9 @@ jobs:
           echo "Searching for any DTB:"
           find "$KERNEL_DIR" -name "*.dtb" 2>/dev/null | head -10
         fi
-        
-        # Check kernel log for errors
-        echo ""
-        echo "📋 Build errors:"
-        if [ -f "kernel-build.log" ]; then
-          grep -E "(error|Error|ERROR)" kernel-build.log | head -10 || echo "No errors found"
-        fi
 
     # ============================================
-    # 10. BUILD DTB MANUALLY (if needed)
+    # 10. MANUAL DTB (if needed)
     # ============================================
     - name: 🔧 Manual DTB build
       if: failure()
@@ -314,7 +334,7 @@ jobs:
         fi
 
     # ============================================
-    # 11. COPY OUTPUT
+    # 11. UPLOAD
     # ============================================
     - name: 📦 Copy output
       if: success()
@@ -337,20 +357,13 @@ jobs:
           echo "✅ DTB copied"
         fi
         
-        # Copy DTS
-        cp "$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts" "$OUTPUT_DIR/" 2>/dev/null || true
-        cp "$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5-common.dtsi" "$OUTPUT_DIR/" 2>/dev/null || true
-        
         # Copy logs
         cp *.log "$OUTPUT_DIR/" 2>/dev/null || true
         
         echo "📂 Output:"
         ls -lah "$OUTPUT_DIR/"
 
-    # ============================================
-    # 12. UPLOAD
-    # ============================================
-    - name: 📤 Upload kernel output
+    - name: 📤 Upload
       if: success()
       uses: actions/upload-artifact@v4
       with:
