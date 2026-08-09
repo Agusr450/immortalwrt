@@ -1,16 +1,16 @@
-name: 🔧 Build Kernel + DTB for Samsung J5 (Debug)
+name: 🔨 Build Kernel + DTB for Samsung J5
 
 on:
   workflow_dispatch:
     inputs:
-      debug:
-        description: '🔍 Debug mode (verbose)'
+      clean:
+        description: '🧹 Clean build?'
         required: false
-        default: 'yes'
+        default: 'no'
         type: choice
         options:
-          - 'yes'
           - 'no'
+          - 'yes'
 
 env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
@@ -45,60 +45,118 @@ jobs:
         ./scripts/feeds install -a
 
     # ============================================
-    # 2. DOWNLOAD KERNEL SOURCE
+    # 2. CACHE
+    # ============================================
+    - name: 💾 Cache toolchain
+      uses: actions/cache@v4
+      with:
+        path: |
+          staging_dir/toolchain-aarch64_generic_gcc-*
+          staging_dir/host
+          staging_dir/hostpkg
+          staging_dir/target-aarch64_generic_musl
+          build_dir/target-aarch64_generic_musl
+          build_dir/host
+        key: kernel-build-${{ github.sha }}
+        restore-keys: |
+          kernel-build-
+          toolchain-
+          staging-
+
+    - name: 💾 Cache download
+      uses: actions/cache@v4
+      with:
+        path: dl
+        key: dl-${{ hashFiles('feeds.conf.default') }}
+        restore-keys: |
+          dl-
+
+    # ============================================
+    # 3. DOWNLOAD KERNEL SOURCE
     # ============================================
     - name: 📥 Download kernel source
       run: |
         echo "📥 Downloading kernel source..."
         
         # Download kernel
-        make download -j4 target/linux/download || true
+        make -j4 target/linux/download V=s || true
         
-        # Extract kernel if needed
-        KERNEL_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35"
+        # Create kernel build directory
+        KERNEL_BUILD_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916"
+        mkdir -p "$KERNEL_BUILD_DIR"
+        
+        KERNEL_DIR="$KERNEL_BUILD_DIR/linux-6.18.35"
+        
+        # Extract kernel if not exists
         if [ ! -d "$KERNEL_DIR" ]; then
           echo "📦 Extracting kernel..."
-          mkdir -p build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916
-          tar -xf dl/linux-*.tar.xz -C build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/
+          KERNEL_TAR=$(find dl -name "linux-*.tar.xz" | head -1)
+          if [ -f "$KERNEL_TAR" ]; then
+            tar -xf "$KERNEL_TAR" -C "$KERNEL_BUILD_DIR/"
+            echo "✅ Kernel extracted to: $KERNEL_DIR"
+          else
+            echo "❌ Kernel tarball not found!"
+            ls -la dl/ | grep linux
+            exit 1
+          fi
+        else
+          echo "✅ Kernel already exists: $KERNEL_DIR"
         fi
-        
-        echo "✅ Kernel source ready:"
-        ls -la "$KERNEL_DIR" | head -10
 
     # ============================================
-    # 3. ADD DTS TO KERNEL
+    # 4. COPY DTS TO KERNEL
     # ============================================
-    - name: 📄 Add DTS to kernel
+    - name: 📄 Copy DTS to kernel
       run: |
-        echo "🔧 Adding DTS to kernel source..."
+        echo "📄 Copying DTS to kernel source..."
         
         KERNEL_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35"
-        DTS_DIR="$KERNEL_DIR/arch/arm64/boot/dts/qcom"
         
-        mkdir -p "$DTS_DIR"
+        if [ ! -d "$KERNEL_DIR" ]; then
+          echo "❌ Kernel directory not found!"
+          exit 1
+        fi
         
-        # Download DTS files
-        cd "$DTS_DIR"
+        # Copy DTS from target/linux to kernel
+        DTS_SRC="target/linux/msm89xx/dts-6.18/arch/arm64/boot/dts/qcom"
+        DTS_DST="$KERNEL_DIR/arch/arm64/boot/dts/qcom"
         
-        echo "📥 Downloading DTS files..."
-        wget -q --show-progress https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5-common.dtsi
-        wget -q --show-progress https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts
+        if [ -d "$DTS_SRC" ]; then
+          mkdir -p "$DTS_DST"
+          cp -v "$DTS_SRC"/*.dts* "$DTS_DST/" 2>/dev/null || true
+          echo "✅ DTS copied to kernel"
+        else
+          echo "⚠️ DTS source not found, downloading..."
+          mkdir -p "$DTS_DST"
+          cd "$DTS_DST"
+          wget -q https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts
+          wget -q https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5-common.dtsi
+          cd -
+        fi
         
-        # Download includes
-        mkdir -p "$KERNEL_DIR/include/dt-bindings"
-        cd "$KERNEL_DIR/include/dt-bindings"
+        # Copy includes
+        INCLUDE_SRC="target/linux/msm89xx/dts-6.18/include/dt-bindings"
+        INCLUDE_DST="$KERNEL_DIR/include/dt-bindings"
         
-        wget -q --show-progress https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/gpio/gpio.h
-        wget -q --show-progress https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/clock/qcom,gcc-msm8916.h
-        wget -q --show-progress https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/clock/qcom,rpmcc.h
+        if [ -d "$INCLUDE_SRC" ]; then
+          mkdir -p "$INCLUDE_DST"
+          cp -r "$INCLUDE_SRC"/* "$INCLUDE_DST/" 2>/dev/null || true
+        else
+          mkdir -p "$INCLUDE_DST"
+          cd "$INCLUDE_DST"
+          wget -q https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/gpio/gpio.h
+          wget -q https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/clock/qcom,gcc-msm8916.h
+          wget -q https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/clock/qcom,rpmcc.h
+          wget -q https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/interrupt-controller/irq.h
+          wget -q https://raw.githubusercontent.com/torvalds/linux/master/include/dt-bindings/power/qcom-rpmpd.h
+          cd -
+        fi
         
-        cd -
-        
-        echo "✅ DTS files:"
-        ls -la "$DTS_DIR/"
+        echo "📂 DTS files in kernel:"
+        ls -la "$DTS_DST/" | grep samsung
 
     # ============================================
-    # 4. PATCH KERNEL MAKEFILE
+    # 5. PATCH KERNEL MAKEFILE
     # ============================================
     - name: 📄 Patch kernel Makefile
       run: |
@@ -108,36 +166,33 @@ jobs:
         echo "🔧 Patching $MAKE_FILE..."
         
         if [ -f "$MAKE_FILE" ]; then
-          # Backup
-          cp "$MAKE_FILE" "$MAKE_FILE.bak"
-          
-          # Add DTS if not exists
           if ! grep -q "msm8916-samsung-j5" "$MAKE_FILE"; then
             echo "Adding DTS to Makefile..."
             sed -i '/dtb-$(CONFIG_ARCH_QCOM) +=/a \	msm8916-samsung-j5.dtb \\' "$MAKE_FILE"
           fi
         else
-          echo "Creating new Makefile..."
+          echo "Creating Makefile..."
           cat > "$MAKE_FILE" << 'EOF'
           # SPDX-License-Identifier: GPL-2.0
           dtb-$(CONFIG_ARCH_QCOM) += msm8916-samsung-j5.dtb
           EOF
         fi
         
-        echo "✅ Makefile content:"
+        echo "✅ Makefile:"
         cat "$MAKE_FILE"
 
     # ============================================
-    # 5. GENERATE KERNEL CONFIG
+    # 6. GENERATE CONFIG
     # ============================================
-    - name: ⚙️ Generate kernel config
+    - name: ⚙️ Generate config
       run: |
-        echo "🔧 Generating kernel config..."
+        echo "🔧 Generating config..."
         
         cat > .config << 'EOF'
         # Target
         CONFIG_TARGET_msm89xx=y
         CONFIG_TARGET_msm89xx_msm8916=y
+        CONFIG_TARGET_msm89xx_msm8916_DEVICE_samsung-j5=y
         
         # Kernel options
         CONFIG_KERNEL_DEVICETREE=y
@@ -149,32 +204,40 @@ jobs:
         CONFIG_KERNEL_DEBUG_INFO=y
         CONFIG_KERNEL_DEBUG_KERNEL=y
         
-        # Minimal packages
+        # Minimal
+        CONFIG_TARGET_IMAGES_ITB=y
+        CONFIG_TARGET_ROOTFS_SQUASHFS=y
         CONFIG_PACKAGE_busybox=y
         
         # Build options
-        CONFIG_TARGET_IMAGES_ITB=y
-        CONFIG_TARGET_ROOTFS_SQUASHFS=y
+        CONFIG_USE_SSTRIP=y
+        CONFIG_STRIP_ALL=y
         EOF
         
         make defconfig
         
         echo "✅ Config:"
+        grep "CONFIG_TARGET" .config | grep -v "is not set"
         grep "CONFIG_KERNEL" .config | grep -v "is not set"
 
     # ============================================
-    # 6. BUILD KERNEL ONLY
+    # 7. BUILD KERNEL
     # ============================================
-    - name: 🔨 Build kernel only
+    - name: 🔨 Build kernel
       run: |
-        echo "🚀 Building kernel only..."
+        echo "🚀 Building kernel..."
         echo "========================================"
         
         CORES=$(nproc)
         echo "Using $CORES cores"
         
-        # Clean previous build
-        rm -rf build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35/.config
+        # Clean if requested
+        if [ "${{ github.event.inputs.clean }}" = "yes" ]; then
+          echo "🧹 Clean build requested"
+          make clean
+          rm -rf build_dir/target-aarch64_generic_musl
+          rm -rf staging_dir/target-aarch64_generic_musl
+        fi
         
         # Build kernel
         make -j$CORES target/linux/compile V=s 2>&1 | tee kernel-build.log
@@ -182,7 +245,7 @@ jobs:
         echo "✅ Kernel build completed"
 
     # ============================================
-    # 7. VERIFY KERNEL OUTPUT
+    # 8. VERIFY KERNEL OUTPUT
     # ============================================
     - name: 📂 Verify kernel output
       if: always()
@@ -204,23 +267,24 @@ jobs:
         # Check DTB
         echo ""
         echo "📦 Checking DTB:"
-        find "$KERNEL_DIR" -name "msm8916-samsung-j5.dtb" 2>/dev/null | while read dtb; do
-          ls -lh "$dtb"
-        done
-        
-        if [ ! -f "$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dtb" ]; then
+        DTB_FILE="$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dtb"
+        if [ -f "$DTB_FILE" ]; then
+          ls -lh "$DTB_FILE"
+        else
           echo "❌ DTB not found!"
-          echo "📂 Searching for any DTB:"
+          echo "Searching for any DTB:"
           find "$KERNEL_DIR" -name "*.dtb" 2>/dev/null | head -10
         fi
         
-        # Check compiled DTS
+        # Check kernel log for errors
         echo ""
-        echo "📦 Checking compiled DTS:"
-        find "$KERNEL_DIR" -name "*.dtb.o" 2>/dev/null | head -5
+        echo "📋 Build errors:"
+        if [ -f "kernel-build.log" ]; then
+          grep -E "(error|Error|ERROR)" kernel-build.log | head -10 || echo "No errors found"
+        fi
 
     # ============================================
-    # 8. BUILD DTB MANUALLY (if needed)
+    # 9. BUILD DTB MANUALLY (if needed)
     # ============================================
     - name: 🔧 Manual DTB build
       if: failure()
@@ -229,32 +293,40 @@ jobs:
         
         KERNEL_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35"
         
-        # Install dtc if needed
-        sudo apt-get install -y device-tree-compiler
+        if [ ! -d "$KERNEL_DIR" ]; then
+          echo "❌ Kernel directory not found!"
+          exit 1
+        fi
         
-        # Compile DTS manually
+        DTS_FILE="$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts"
+        DTB_FILE="$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dtb"
+        
+        if [ ! -f "$DTS_FILE" ]; then
+          echo "❌ DTS file not found!"
+          exit 1
+        fi
+        
+        echo "📄 Compiling DTB manually..."
         cd "$KERNEL_DIR"
         
-        # Add necessary includes
-        export CPPFLAGS="-I$KERNEL_DIR/include -I$KERNEL_DIR/arch/arm64/boot/dts/include"
-        
-        # Compile DTB
         dtc -I dts -O dtb \
-          -i "$KERNEL_DIR/include/dt-bindings" \
-          -i "$KERNEL_DIR/arch/arm64/boot/dts/qcom" \
-          -o "$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dtb" \
-          "$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts" \
-          2>&1 | tee dtc-build.log
+          -i "include/dt-bindings" \
+          -i "arch/arm64/boot/dts/qcom" \
+          -o "$DTB_FILE" \
+          "$DTS_FILE" 2>&1 | tee dtc-build.log
         
-        echo "✅ Manual DTB build completed"
-        
-        # Show result
-        ls -lh "$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dtb" || echo "❌ DTB still not found"
+        if [ -f "$DTB_FILE" ]; then
+          echo "✅ Manual DTB build succeeded!"
+          ls -lh "$DTB_FILE"
+        else
+          echo "❌ Manual DTB build failed"
+          cat dtc-build.log
+        fi
 
     # ============================================
-    # 9. COPY OUTPUT
+    # 10. COPY OUTPUT
     # ============================================
-    - name: 📦 Copy kernel output
+    - name: 📦 Copy output
       if: success()
       run: |
         echo "📦 Copying kernel output..."
@@ -279,14 +351,14 @@ jobs:
         cp "$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts" "$OUTPUT_DIR/" 2>/dev/null || true
         cp "$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5-common.dtsi" "$OUTPUT_DIR/" 2>/dev/null || true
         
-        # Copy build logs
-        cp kernel-build.log "$OUTPUT_DIR/" 2>/dev/null || true
+        # Copy logs
+        cp *.log "$OUTPUT_DIR/" 2>/dev/null || true
         
         echo "📂 Output:"
         ls -lah "$OUTPUT_DIR/"
 
     # ============================================
-    # 10. UPLOAD
+    # 11. UPLOAD
     # ============================================
     - name: 📤 Upload kernel output
       if: success()
