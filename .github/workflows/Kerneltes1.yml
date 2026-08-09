@@ -1,4 +1,4 @@
-name: 🔨 Build Toolchain + Kernel for Samsung J5
+name: 🔨 Build Toolchain + Kernel for Samsung J5 (ImmortalWRT)
 
 on:
   workflow_dispatch:
@@ -37,11 +37,16 @@ jobs:
           device-tree-compiler u-boot-tools \
           m4
 
-    - name: 📥 Checkout
+    - name: 📥 Checkout ImmortalWRT
       uses: actions/checkout@v4
+      with:
+        repository: immortalwrt/immortalwrt
+        ref: master
+        path: immortalwrt
 
-    - name: 🔄 Update feeds
+    - name: 📂 Setup ImmortalWRT
       run: |
+        cd immortalwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
@@ -52,13 +57,13 @@ jobs:
       uses: actions/cache@v4
       with:
         path: |
-          staging_dir/toolchain-aarch64_generic_gcc-*
-          staging_dir/host
-          staging_dir/hostpkg
-          staging_dir/target-aarch64_generic_musl
-          build_dir/target-aarch64_generic_musl
-          build_dir/host
-          dl
+          immortalwrt/staging_dir/toolchain-aarch64_generic_gcc-*
+          immortalwrt/staging_dir/host
+          immortalwrt/staging_dir/hostpkg
+          immortalwrt/staging_dir/target-aarch64_generic_musl
+          immortalwrt/build_dir/target-aarch64_generic_musl
+          immortalwrt/build_dir/host
+          immortalwrt/dl
         key: build-${{ github.sha }}
         restore-keys: |
           build-
@@ -70,15 +75,17 @@ jobs:
     # ============================================
     - name: 📥 Download sources
       run: |
+        cd immortalwrt
         echo "📥 Downloading sources..."
         make download -j4 || true
         make download -j4 || true
 
     # ============================================
-    # 4. COPY DTS TO KERNEL (Sebelum Config)
+    # 4. COPY DTS TO KERNEL
     # ============================================
     - name: 📄 Copy DTS to kernel
       run: |
+        cd immortalwrt
         echo "📄 Copying DTS to kernel source..."
         
         KERNEL_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35"
@@ -128,6 +135,7 @@ jobs:
     # ============================================
     - name: 📄 Patch kernel Makefile
       run: |
+        cd immortalwrt
         KERNEL_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35"
         MAKE_FILE="$KERNEL_DIR/arch/arm64/boot/dts/qcom/Makefile"
         
@@ -151,13 +159,14 @@ jobs:
         cat "$MAKE_FILE"
 
     # ============================================
-    # 6. GENERATE CONFIG (DENGAN DUKUNGAN WIFI, MODEM, USB)
+    # 6. GENERATE CONFIG (IMMORTALWRT)
     # ============================================
     - name: ⚙️ Generate config
       run: |
-        echo "🔧 Generating config with WiFi, Modem, and USB support..."
+        cd immortalwrt
+        echo "🔧 Generating config for ImmortalWRT with WiFi, Modem, and USB support..."
         
-        # Config lengkap dengan dukungan WiFi, Modem, dan USB
+        # Config untuk ImmortalWRT
         cat > .config << 'EOF'
         # Target
         CONFIG_TARGET_msm89xx=y
@@ -210,7 +219,6 @@ jobs:
         CONFIG_PACKAGE_kmod-usb-dwc3=y
         CONFIG_PACKAGE_kmod-usb-dwc3-qcom=y
         CONFIG_PACKAGE_kmod-usb-phy-qcom=y
-        CONFIG_PACKAGE_kmod-usb-msm-y
         CONFIG_PACKAGE_kmod-usb-gadget=y
         CONFIG_PACKAGE_kmod-usb-gadget-configfs=y
         CONFIG_PACKAGE_kmod-usb-gadget-ecm=y
@@ -219,7 +227,6 @@ jobs:
         # ====================================
         # USB NETWORK ADAPTERS
         # ====================================
-        # Ethernet
         CONFIG_PACKAGE_kmod-usb-net-asix=y
         CONFIG_PACKAGE_kmod-usb-net-asix-ax88179=y
         CONFIG_PACKAGE_kmod-usb-net-dm9601=y
@@ -236,8 +243,6 @@ jobs:
         CONFIG_PACKAGE_kmod-usb-net-rtl8188eu=y
         CONFIG_PACKAGE_kmod-usb-net-rtl8812au=y
         CONFIG_PACKAGE_kmod-usb-net-rtl8821au=y
-        CONFIG_PACKAGE_kmod-usb-net-rtl8822bu=y
-        CONFIG_PACKAGE_kmod-usb-net-rtl8852bu=y
         CONFIG_PACKAGE_kmod-rt2800-usb=y
         CONFIG_PACKAGE_kmod-rt2x00-usb=y
         CONFIG_PACKAGE_kmod-rtl8xxxu=y
@@ -264,7 +269,6 @@ jobs:
         CONFIG_PACKAGE_kmod-usb-serial-ti-usb=y
         CONFIG_PACKAGE_kmod-usb-serial-visor=y
         CONFIG_PACKAGE_kmod-usb-serial-wwan=y
-        CONFIG_PACKAGE_kmod-usb-serial-xr-usb-serial=y
         
         # ====================================
         # USB MODEM (QMI/MBIM)
@@ -309,7 +313,7 @@ jobs:
         CONFIG_PACKAGE_comgt-directip=y
         
         # ====================================
-        # WIFI SUPPORT
+        # WIFI SUPPORT (ImmortalWRT)
         # ====================================
         CONFIG_PACKAGE_kmod-ath=y
         CONFIG_PACKAGE_kmod-ath9k=y
@@ -367,18 +371,23 @@ jobs:
         CONFIG_PACKAGE_kmod-ipt-offload=y
         CONFIG_PACKAGE_kmod-nf-nat=y
         CONFIG_PACKAGE_kmod-nf-flow=y
+        
+        # ====================================
+        # IMMORTALWRT SPECIFIC
+        # ====================================
+        # Use ImmortalWRT's package feeds
+        CONFIG_PACKAGE_immortalwrt-release=y
+        CONFIG_PACKAGE_immortalwrt-banner=y
         EOF
         
         # Defconfig
         make defconfig
         
         echo ""
-        echo "✅ Config generated with WiFi, Modem, and USB support:"
+        echo "✅ Config generated for ImmortalWRT with WiFi, Modem, and USB support:"
         echo ""
         echo "🔌 USB packages:"
         grep "CONFIG_PACKAGE.*usb" .config | grep -v "is not set" | wc -l
-        echo "USB packages enabled:"
-        grep "CONFIG_PACKAGE.*usb" .config | grep -v "is not set" | head -10
         echo ""
         echo "📡 WiFi packages:"
         grep "CONFIG_PACKAGE.*ath\|CONFIG_PACKAGE.*wireless" .config | grep -v "is not set" | wc -l
@@ -391,6 +400,7 @@ jobs:
     # ============================================
     - name: 🔨 Build toolchain
       run: |
+        cd immortalwrt
         echo "🔨 Building toolchain..."
         echo "========================================"
         
@@ -434,6 +444,7 @@ jobs:
     # ============================================
     - name: 🔨 Build kernel
       run: |
+        cd immortalwrt
         echo "🚀 Building kernel with WiFi, Modem, and USB support..."
         echo "========================================"
         
@@ -456,6 +467,7 @@ jobs:
     - name: 📦 Create kernel image (.img)
       if: success()
       run: |
+        cd immortalwrt
         echo "📦 Creating kernel image file (.img)..."
         echo "========================================"
         
@@ -552,6 +564,7 @@ jobs:
     - name: 📦 Generate package list
       if: success()
       run: |
+        cd immortalwrt
         echo "📦 Generating package list..."
         
         OUTPUT_DIR="kernel-output"
@@ -585,6 +598,7 @@ jobs:
     - name: 📂 Verify output
       if: always()
       run: |
+        cd immortalwrt
         echo "📂 Verifying kernel build output..."
         echo "========================================"
         
@@ -633,6 +647,7 @@ jobs:
     - name: 🔧 Manual DTB build
       if: failure()
       run: |
+        cd immortalwrt
         echo "🔧 Trying to build DTB manually..."
         
         KERNEL_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35"
@@ -674,13 +689,13 @@ jobs:
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: kernel-j5-full-usb-${{ github.run_number }}
+        name: kernel-j5-immortalwrt-${{ github.run_number }}
         path: |
-          kernel-output/*.img
-          kernel-output/Image.img
-          kernel-output/msm8916-samsung-j5.dtb
-          kernel-output/packages.txt
-          .config
+          immortalwrt/kernel-output/*.img
+          immortalwrt/kernel-output/Image.img
+          immortalwrt/kernel-output/msm8916-samsung-j5.dtb
+          immortalwrt/kernel-output/packages.txt
+          immortalwrt/.config
         retention-days: 7
 
     - name: 📤 Upload logs
@@ -689,6 +704,6 @@ jobs:
       with:
         name: kernel-logs-${{ github.run_number }}
         path: |
-          *.log
-          logs/
+          immortalwrt/*.log
+          immortalwrt/logs/
         retention-days: 7
