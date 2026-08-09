@@ -151,51 +151,240 @@ jobs:
         cat "$MAKE_FILE"
 
     # ============================================
-    # 6. GENERATE CONFIG (MINIMAL - TANPA ERROR)
+    # 6. GENERATE CONFIG (DENGAN DUKUNGAN WIFI, MODEM, USB)
     # ============================================
     - name: ⚙️ Generate config
       run: |
-        echo "🔧 Generating config..."
+        echo "🔧 Generating config with WiFi, Modem, and USB support..."
         
-        # Gunakan config minimal yang sudah terbukti
+        # Config lengkap dengan dukungan WiFi, Modem, dan USB
         cat > .config << 'EOF'
+        # Target
         CONFIG_TARGET_msm89xx=y
         CONFIG_TARGET_msm89xx_msm8916=y
         CONFIG_TARGET_msm89xx_msm8916_DEVICE_samsung-j5=y
         
+        # Filesystem
         CONFIG_TARGET_ROOTFS_SQUASHFS=y
         CONFIG_TARGET_IMAGES_GZIP=y
         CONFIG_TARGET_IMAGES_ITB=y
         
+        # Kernel
         CONFIG_KERNEL_DEVICETREE=y
         CONFIG_KERNEL_DTBS="msm8916-samsung-j5.dtb"
         CONFIG_KERNEL_FIT_IMAGE=y
         CONFIG_KERNEL_FIT_SIGNATURE=n
         
+        # Optimization
         CONFIG_TARGET_OPTIMIZATION="-Os -pipe"
         CONFIG_STRIP_KERNEL_EXPORTS=y
         CONFIG_USE_SSTRIP=y
         CONFIG_STRIP_ALL=y
         
-        # Minimal packages
-        CONFIG_PACKAGE_busybox=y
-        CONFIG_PACKAGE_dropbear=y
-        
         # Build options
         CONFIG_MAKE_TOOLCHAIN_PARALLEL=y
-        
-        # CCACHE
         CONFIG_CCACHE=y
         CONFIG_CCACHE_DIR="/home/runner/.ccache"
+        
+        # ====================================
+        # USB SUPPORT - CORE
+        # ====================================
+        CONFIG_PACKAGE_kmod-usb-core=y
+        CONFIG_PACKAGE_kmod-usb-ohci=y
+        CONFIG_PACKAGE_kmod-usb-ohci-pci=y
+        CONFIG_PACKAGE_kmod-usb-uhci=y
+        CONFIG_PACKAGE_kmod-usb2=y
+        CONFIG_PACKAGE_kmod-usb3=y
+        CONFIG_PACKAGE_kmod-usb-storage=y
+        CONFIG_PACKAGE_kmod-usb-storage-extras=y
+        CONFIG_PACKAGE_kmod-usb-storage-uas=y
+        
+        # ====================================
+        # USB HOST & GADGET
+        # ====================================
+        CONFIG_PACKAGE_kmod-usb-hid=y
+        CONFIG_PACKAGE_kmod-usb-net=y
+        CONFIG_PACKAGE_kmod-usb-serial=y
+        CONFIG_PACKAGE_kmod-usb-acm=y
+        CONFIG_PACKAGE_kmod-usb-dwc2=y
+        CONFIG_PACKAGE_kmod-usb-dwc3=y
+        CONFIG_PACKAGE_kmod-usb-dwc3-qcom=y
+        CONFIG_PACKAGE_kmod-usb-phy-qcom=y
+        CONFIG_PACKAGE_kmod-usb-msm-y
+        CONFIG_PACKAGE_kmod-usb-gadget=y
+        CONFIG_PACKAGE_kmod-usb-gadget-configfs=y
+        CONFIG_PACKAGE_kmod-usb-gadget-ecm=y
+        CONFIG_PACKAGE_kmod-usb-gadget-rndis=y
+        
+        # ====================================
+        # USB NETWORK ADAPTERS
+        # ====================================
+        # Ethernet
+        CONFIG_PACKAGE_kmod-usb-net-asix=y
+        CONFIG_PACKAGE_kmod-usb-net-asix-ax88179=y
+        CONFIG_PACKAGE_kmod-usb-net-dm9601=y
+        CONFIG_PACKAGE_kmod-usb-net-mcs7830=y
+        CONFIG_PACKAGE_kmod-usb-net-pegasus=y
+        CONFIG_PACKAGE_kmod-usb-net-rtl8150=y
+        CONFIG_PACKAGE_kmod-usb-net-rtl8152=y
+        CONFIG_PACKAGE_kmod-usb-net-smsc95xx=y
+        
+        # ====================================
+        # USB WIRELESS ADAPTERS
+        # ====================================
+        CONFIG_PACKAGE_kmod-usb-net-rtl8187=y
+        CONFIG_PACKAGE_kmod-usb-net-rtl8188eu=y
+        CONFIG_PACKAGE_kmod-usb-net-rtl8812au=y
+        CONFIG_PACKAGE_kmod-usb-net-rtl8821au=y
+        CONFIG_PACKAGE_kmod-usb-net-rtl8822bu=y
+        CONFIG_PACKAGE_kmod-usb-net-rtl8852bu=y
+        CONFIG_PACKAGE_kmod-rt2800-usb=y
+        CONFIG_PACKAGE_kmod-rt2x00-usb=y
+        CONFIG_PACKAGE_kmod-rtl8xxxu=y
+        
+        # ====================================
+        # USB SERIAL ADAPTERS
+        # ====================================
+        CONFIG_PACKAGE_kmod-usb-serial-ark3116=y
+        CONFIG_PACKAGE_kmod-usb-serial-belkin=y
+        CONFIG_PACKAGE_kmod-usb-serial-ch341=y
+        CONFIG_PACKAGE_kmod-usb-serial-cp210x=y
+        CONFIG_PACKAGE_kmod-usb-serial-cypress-m8=y
+        CONFIG_PACKAGE_kmod-usb-serial-ftdi=y
+        CONFIG_PACKAGE_kmod-usb-serial-keyspan=y
+        CONFIG_PACKAGE_kmod-usb-serial-mct=y
+        CONFIG_PACKAGE_kmod-usb-serial-mos7720=y
+        CONFIG_PACKAGE_kmod-usb-serial-mos7840=y
+        CONFIG_PACKAGE_kmod-usb-serial-option=y
+        CONFIG_PACKAGE_kmod-usb-serial-oti6858=y
+        CONFIG_PACKAGE_kmod-usb-serial-pl2303=y
+        CONFIG_PACKAGE_kmod-usb-serial-qualcomm=y
+        CONFIG_PACKAGE_kmod-usb-serial-sierrawireless=y
+        CONFIG_PACKAGE_kmod-usb-serial-simple=y
+        CONFIG_PACKAGE_kmod-usb-serial-ti-usb=y
+        CONFIG_PACKAGE_kmod-usb-serial-visor=y
+        CONFIG_PACKAGE_kmod-usb-serial-wwan=y
+        CONFIG_PACKAGE_kmod-usb-serial-xr-usb-serial=y
+        
+        # ====================================
+        # USB MODEM (QMI/MBIM)
+        # ====================================
+        CONFIG_PACKAGE_kmod-usb-net-qmi-wwan=y
+        CONFIG_PACKAGE_kmod-usb-net-cdc-ether=y
+        CONFIG_PACKAGE_kmod-usb-net-cdc-mbim=y
+        CONFIG_PACKAGE_kmod-usb-net-cdc-ncm=y
+        CONFIG_PACKAGE_kmod-usb-net-huawei-cdc-ncm=y
+        CONFIG_PACKAGE_kmod-usb-net-rndis=y
+        
+        # ====================================
+        # USB AUDIO
+        # ====================================
+        CONFIG_PACKAGE_kmod-usb-audio=y
+        
+        # ====================================
+        # USB STORAGE FILESYSTEMS
+        # ====================================
+        CONFIG_PACKAGE_kmod-fs-vfat=y
+        CONFIG_PACKAGE_kmod-fs-ext4=y
+        CONFIG_PACKAGE_kmod-fs-ntfs=y
+        CONFIG_PACKAGE_kmod-fs-exfat=y
+        CONFIG_PACKAGE_kmod-fs-msdos=y
+        CONFIG_PACKAGE_kmod-nls-cp437=y
+        CONFIG_PACKAGE_kmod-nls-iso8859-1=y
+        CONFIG_PACKAGE_kmod-nls-utf8=y
+        CONFIG_PACKAGE_kmod-nls-cp850=y
+        CONFIG_PACKAGE_kmod-nls-cp852=y
+        CONFIG_PACKAGE_kmod-nls-cp866=y
+        
+        # ====================================
+        # USB TOOLS
+        # ====================================
+        CONFIG_PACKAGE_usbutils=y
+        CONFIG_PACKAGE_libusb=y
+        CONFIG_PACKAGE_libusb-compat=y
+        CONFIG_PACKAGE_usb-modeswitch=y
+        CONFIG_PACKAGE_usb-modeswitch-data=y
+        CONFIG_PACKAGE_comgt=y
+        CONFIG_PACKAGE_comgt-ncm=y
+        CONFIG_PACKAGE_comgt-directip=y
+        
+        # ====================================
+        # WIFI SUPPORT
+        # ====================================
+        CONFIG_PACKAGE_kmod-ath=y
+        CONFIG_PACKAGE_kmod-ath9k=y
+        CONFIG_PACKAGE_kmod-ath9k-htc=y
+        CONFIG_PACKAGE_kmod-ath10k=y
+        CONFIG_PACKAGE_kmod-ath10k-ct=y
+        CONFIG_PACKAGE_kmod-cfg80211=y
+        CONFIG_PACKAGE_kmod-mac80211=y
+        CONFIG_PACKAGE_kmod-wireguard=y
+        
+        CONFIG_PACKAGE_iw=y
+        CONFIG_PACKAGE_iwinfo=y
+        CONFIG_PACKAGE_wpa-cli=y
+        CONFIG_PACKAGE_wpa-supplicant=y
+        CONFIG_PACKAGE_hostapd=y
+        CONFIG_PACKAGE_hostapd-common=y
+        
+        # ====================================
+        # MODEM / CELLULAR SUPPORT
+        # ====================================
+        CONFIG_PACKAGE_modemmanager=y
+        CONFIG_PACKAGE_modemmanager-rpcd=y
+        CONFIG_PACKAGE_mmcli=y
+        CONFIG_PACKAGE_libqmi=y
+        CONFIG_PACKAGE_libqrtr-glib=y
+        CONFIG_PACKAGE_libmbim=y
+        CONFIG_PACKAGE_qmi-utils=y
+        CONFIG_PACKAGE_umbim=y
+        
+        # ====================================
+        # NETWORK TOOLS
+        # ====================================
+        CONFIG_PACKAGE_luci=y
+        CONFIG_PACKAGE_luci-base=y
+        CONFIG_PACKAGE_luci-mod-network=y
+        CONFIG_PACKAGE_luci-mod-system=y
+        CONFIG_PACKAGE_luci-proto-ppp=y
+        CONFIG_PACKAGE_luci-proto-qmi=y
+        CONFIG_PACKAGE_luci-proto-mbim=y
+        CONFIG_PACKAGE_luci-proto-ncm=y
+        
+        CONFIG_PACKAGE_ppp=y
+        CONFIG_PACKAGE_ppp-mod-pppoe=y
+        CONFIG_PACKAGE_dropbear=y
+        CONFIG_PACKAGE_busybox=y
+        CONFIG_PACKAGE_firewall=y
+        CONFIG_PACKAGE_dnsmasq=y
+        CONFIG_PACKAGE_odhcpd=y
+        
+        # ====================================
+        # KERNEL MODULES
+        # ====================================
+        CONFIG_PACKAGE_kmod-qmi_wwan=y
+        CONFIG_PACKAGE_kmod-ipt-nat=y
+        CONFIG_PACKAGE_kmod-ipt-offload=y
+        CONFIG_PACKAGE_kmod-nf-nat=y
+        CONFIG_PACKAGE_kmod-nf-flow=y
         EOF
         
         # Defconfig
         make defconfig
         
         echo ""
-        echo "✅ Config generated:"
-        grep "CONFIG_TARGET" .config | grep -v "is not set" | head -5
-        grep "CONFIG_PACKAGE" .config | grep -v "is not set" | head -5
+        echo "✅ Config generated with WiFi, Modem, and USB support:"
+        echo ""
+        echo "🔌 USB packages:"
+        grep "CONFIG_PACKAGE.*usb" .config | grep -v "is not set" | wc -l
+        echo "USB packages enabled:"
+        grep "CONFIG_PACKAGE.*usb" .config | grep -v "is not set" | head -10
+        echo ""
+        echo "📡 WiFi packages:"
+        grep "CONFIG_PACKAGE.*ath\|CONFIG_PACKAGE.*wireless" .config | grep -v "is not set" | wc -l
+        echo ""
+        echo "📶 Modem packages:"
+        grep "CONFIG_PACKAGE.*modem\|CONFIG_PACKAGE.*qmi" .config | grep -v "is not set" | wc -l
 
     # ============================================
     # 7. BUILD TOOLCHAIN
@@ -245,7 +434,7 @@ jobs:
     # ============================================
     - name: 🔨 Build kernel
       run: |
-        echo "🚀 Building kernel..."
+        echo "🚀 Building kernel with WiFi, Modem, and USB support..."
         echo "========================================"
         
         CORES=$(nproc)
@@ -262,7 +451,136 @@ jobs:
         echo "✅ Kernel build completed"
 
     # ============================================
-    # 9. VERIFY OUTPUT
+    # 9. CREATE KERNEL IMAGE (.img)
+    # ============================================
+    - name: 📦 Create kernel image (.img)
+      if: success()
+      run: |
+        echo "📦 Creating kernel image file (.img)..."
+        echo "========================================"
+        
+        KERNEL_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35"
+        OUTPUT_DIR="kernel-output"
+        mkdir -p "$OUTPUT_DIR"
+        
+        # Copy Image
+        if [ -f "$KERNEL_DIR/arch/arm64/boot/Image" ]; then
+          cp "$KERNEL_DIR/arch/arm64/boot/Image" "$OUTPUT_DIR/"
+          echo "✅ Image copied"
+        fi
+        
+        # Copy DTB
+        if [ -f "$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dtb" ]; then
+          cp "$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dtb" "$OUTPUT_DIR/"
+          echo "✅ DTB copied"
+        fi
+        
+        # Create boot image using mkbootimg
+        echo "🔧 Creating boot.img..."
+        
+        # Check for mkbootimg
+        if command -v mkbootimg &> /dev/null; then
+          echo "Using system mkbootimg"
+          MKBootImg="mkbootimg"
+        elif [ -f "staging_dir/host/bin/mkbootimg" ]; then
+          echo "Using OpenWrt mkbootimg"
+          MKBootImg="staging_dir/host/bin/mkbootimg"
+        else
+          echo "Installing mkbootimg..."
+          git clone https://android.googlesource.com/platform/system/tools/mkbootimg
+          cd mkbootimg
+          make
+          cd ..
+          MKBootImg="./mkbootimg/mkbootimg"
+        fi
+        
+        # Create boot.img
+        $MKBootImg \
+          --kernel "$OUTPUT_DIR/Image" \
+          --ramdisk /dev/null \
+          --dtb "$OUTPUT_DIR/msm8916-samsung-j5.dtb" \
+          --base 0x80000000 \
+          --pagesize 2048 \
+          --kernel_offset 0x8000 \
+          --ramdisk_offset 0x1000000 \
+          --tags_offset 0x100 \
+          --cmdline "console=ttyMSM0,115200,n8 androidboot.hardware=qcom msm_rtb.filter=0x237 ehci-hcd.park=3 lpm_levels.sleep_disabled=1 earlycon=msm_serial_dm,0x78B0000 androidboot.selinux=permissive" \
+          -o "$OUTPUT_DIR/boot.img"
+        
+        # Alternative: Create using dd if mkbootimg fails
+        if [ ! -f "$OUTPUT_DIR/boot.img" ]; then
+          echo "⚠️ mkbootimg failed, creating raw image..."
+          
+          # Create raw kernel image
+          dd if="$OUTPUT_DIR/Image" of="$OUTPUT_DIR/kernel.img" bs=512 conv=fsync 2>/dev/null || true
+          
+          # Create combined image with DTB
+          cat "$OUTPUT_DIR/Image" "$OUTPUT_DIR/msm8916-samsung-j5.dtb" > "$OUTPUT_DIR/kernel-with-dtb.img"
+          
+          echo "✅ Raw images created"
+        fi
+        
+        # Copy logs
+        cp *.log "$OUTPUT_DIR/" 2>/dev/null || true
+        
+        echo "📂 Output:"
+        ls -lah "$OUTPUT_DIR/"
+        
+        # Rename to .img extension
+        if [ -f "$OUTPUT_DIR/boot.img" ]; then
+          mv "$OUTPUT_DIR/boot.img" "$OUTPUT_DIR/kernel-j5-${{ github.run_number }}.img"
+          echo "✅ Created: kernel-j5-${{ github.run_number }}.img"
+        elif [ -f "$OUTPUT_DIR/kernel-with-dtb.img" ]; then
+          mv "$OUTPUT_DIR/kernel-with-dtb.img" "$OUTPUT_DIR/kernel-j5-${{ github.run_number }}.img"
+          echo "✅ Created: kernel-j5-${{ github.run_number }}.img"
+        elif [ -f "$OUTPUT_DIR/kernel.img" ]; then
+          mv "$OUTPUT_DIR/kernel.img" "$OUTPUT_DIR/kernel-j5-${{ github.run_number }}.img"
+          echo "✅ Created: kernel-j5-${{ github.run_number }}.img"
+        fi
+        
+        # Rename Image to .img extension
+        if [ -f "$OUTPUT_DIR/Image" ]; then
+          mv "$OUTPUT_DIR/Image" "$OUTPUT_DIR/Image.img"
+        fi
+        
+        echo "📂 Final output:"
+        ls -lah "$OUTPUT_DIR/"
+
+    # ============================================
+    # 10. CREATE PACKAGE LIST
+    # ============================================
+    - name: 📦 Generate package list
+      if: success()
+      run: |
+        echo "📦 Generating package list..."
+        
+        OUTPUT_DIR="kernel-output"
+        
+        echo "# Packages included in this build" > "$OUTPUT_DIR/packages.txt"
+        echo "Generated: $(date)" >> "$OUTPUT_DIR/packages.txt"
+        echo "========================================" >> "$OUTPUT_DIR/packages.txt"
+        echo "" >> "$OUTPUT_DIR/packages.txt"
+        
+        echo "🔌 USB Packages:" >> "$OUTPUT_DIR/packages.txt"
+        grep "CONFIG_PACKAGE.*usb" .config | grep "=y" | sed 's/CONFIG_PACKAGE_//g' | sed 's/=y//g' >> "$OUTPUT_DIR/packages.txt"
+        echo "" >> "$OUTPUT_DIR/packages.txt"
+        
+        echo "📡 WiFi Packages:" >> "$OUTPUT_DIR/packages.txt"
+        grep "CONFIG_PACKAGE.*ath\|CONFIG_PACKAGE.*wireless" .config | grep "=y" | sed 's/CONFIG_PACKAGE_//g' | sed 's/=y//g' >> "$OUTPUT_DIR/packages.txt"
+        echo "" >> "$OUTPUT_DIR/packages.txt"
+        
+        echo "📶 Modem Packages:" >> "$OUTPUT_DIR/packages.txt"
+        grep "CONFIG_PACKAGE.*modem\|CONFIG_PACKAGE.*qmi" .config | grep "=y" | sed 's/CONFIG_PACKAGE_//g' | sed 's/=y//g' >> "$OUTPUT_DIR/packages.txt"
+        echo "" >> "$OUTPUT_DIR/packages.txt"
+        
+        echo "🔧 Network Tools:" >> "$OUTPUT_DIR/packages.txt"
+        grep "CONFIG_PACKAGE_luci" .config | grep "=y" | sed 's/CONFIG_PACKAGE_//g' | sed 's/=y//g' >> "$OUTPUT_DIR/packages.txt"
+        
+        echo "✅ Package list generated"
+        cat "$OUTPUT_DIR/packages.txt"
+
+    # ============================================
+    # 11. VERIFY OUTPUT
     # ============================================
     - name: 📂 Verify output
       if: always()
@@ -271,6 +589,7 @@ jobs:
         echo "========================================"
         
         KERNEL_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35"
+        OUTPUT_DIR="kernel-output"
         
         # Check Image
         echo "📦 Checking Image:"
@@ -292,9 +611,24 @@ jobs:
           echo "Searching for any DTB:"
           find "$KERNEL_DIR" -name "*.dtb" 2>/dev/null | head -10
         fi
+        
+        # Check .img files
+        echo ""
+        echo "📦 Checking .img files:"
+        ls -lah "$OUTPUT_DIR"/*.img 2>/dev/null || echo "No .img files found"
+        
+        # Check package list
+        echo ""
+        echo "📦 Checking package list:"
+        if [ -f "$OUTPUT_DIR/packages.txt" ]; then
+          echo "✅ packages.txt found"
+          head -20 "$OUTPUT_DIR/packages.txt"
+        else
+          echo "❌ packages.txt not found"
+        fi
 
     # ============================================
-    # 10. MANUAL DTB (if needed)
+    # 12. MANUAL DTB (if needed)
     # ============================================
     - name: 🔧 Manual DTB build
       if: failure()
@@ -334,42 +668,18 @@ jobs:
         fi
 
     # ============================================
-    # 11. UPLOAD
+    # 13. UPLOAD
     # ============================================
-    - name: 📦 Copy output
-      if: success()
-      run: |
-        echo "📦 Copying kernel output..."
-        
-        KERNEL_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35"
-        OUTPUT_DIR="kernel-output"
-        mkdir -p "$OUTPUT_DIR"
-        
-        # Copy Image
-        if [ -f "$KERNEL_DIR/arch/arm64/boot/Image" ]; then
-          cp "$KERNEL_DIR/arch/arm64/boot/Image" "$OUTPUT_DIR/"
-          echo "✅ Image copied"
-        fi
-        
-        # Copy DTB
-        if [ -f "$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dtb" ]; then
-          cp "$KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dtb" "$OUTPUT_DIR/"
-          echo "✅ DTB copied"
-        fi
-        
-        # Copy logs
-        cp *.log "$OUTPUT_DIR/" 2>/dev/null || true
-        
-        echo "📂 Output:"
-        ls -lah "$OUTPUT_DIR/"
-
     - name: 📤 Upload
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: kernel-j5-${{ github.run_number }}
+        name: kernel-j5-full-usb-${{ github.run_number }}
         path: |
-          kernel-output/
+          kernel-output/*.img
+          kernel-output/Image.img
+          kernel-output/msm8916-samsung-j5.dtb
+          kernel-output/packages.txt
           .config
         retention-days: 7
 
