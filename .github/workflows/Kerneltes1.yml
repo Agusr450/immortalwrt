@@ -1,4 +1,4 @@
-name: 🔨 Build Kernel + DTB for Samsung J5
+name: 🔨 Build Toolchain + Kernel for Samsung J5
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ env:
 jobs:
   build-kernel:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     permissions:
       contents: write
 
@@ -34,7 +34,8 @@ jobs:
           git libncurses-dev libssl-dev python3 \
           rsync unzip zlib1g-dev file wget time \
           cpio xxd bc lzma lzop perl libelf-dev \
-          device-tree-compiler u-boot-tools
+          device-tree-compiler u-boot-tools \
+          m4
 
     - name: 📥 Checkout
       uses: actions/checkout@v4
@@ -57,54 +58,46 @@ jobs:
           staging_dir/target-aarch64_generic_musl
           build_dir/target-aarch64_generic_musl
           build_dir/host
-        key: kernel-build-${{ github.sha }}
+          dl
+        key: build-${{ github.sha }}
         restore-keys: |
-          kernel-build-
+          build-
           toolchain-
           staging-
-
-    - name: 💾 Cache download
-      uses: actions/cache@v4
-      with:
-        path: dl
-        key: dl-${{ hashFiles('feeds.conf.default') }}
-        restore-keys: |
           dl-
 
     # ============================================
-    # 3. DOWNLOAD KERNEL SOURCE
+    # 3. DOWNLOAD SOURCES
     # ============================================
-    - name: 📥 Download kernel source
+    - name: 📥 Download sources
       run: |
-        echo "📥 Downloading kernel source..."
-        
-        # Download kernel
-        make -j4 target/linux/download V=s || true
-        
-        # Create kernel build directory
-        KERNEL_BUILD_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916"
-        mkdir -p "$KERNEL_BUILD_DIR"
-        
-        KERNEL_DIR="$KERNEL_BUILD_DIR/linux-6.18.35"
-        
-        # Extract kernel if not exists
-        if [ ! -d "$KERNEL_DIR" ]; then
-          echo "📦 Extracting kernel..."
-          KERNEL_TAR=$(find dl -name "linux-*.tar.xz" | head -1)
-          if [ -f "$KERNEL_TAR" ]; then
-            tar -xf "$KERNEL_TAR" -C "$KERNEL_BUILD_DIR/"
-            echo "✅ Kernel extracted to: $KERNEL_DIR"
-          else
-            echo "❌ Kernel tarball not found!"
-            ls -la dl/ | grep linux
-            exit 1
-          fi
-        else
-          echo "✅ Kernel already exists: $KERNEL_DIR"
-        fi
+        echo "📥 Downloading sources..."
+        make download -j4 || true
+        make download -j4 || true
 
     # ============================================
-    # 4. COPY DTS TO KERNEL
+    # 4. BUILD TOOLCHAIN (CRITICAL!)
+    # ============================================
+    - name: 🔨 Build toolchain
+      run: |
+        echo "🔨 Building toolchain..."
+        echo "========================================"
+        
+        CORES=$(nproc)
+        echo "Using $CORES cores"
+        
+        # Build toolchain first
+        make -j$CORES toolchain/compile V=s 2>&1 | tee toolchain-build.log
+        
+        echo "✅ Toolchain build completed"
+        
+        # Verify toolchain exists
+        echo ""
+        echo "🔍 Verifying toolchain..."
+        ls -la staging_dir/toolchain-aarch64_generic_gcc-*/bin/ | head -20
+
+    # ============================================
+    # 5. COPY DTS TO KERNEL
     # ============================================
     - name: 📄 Copy DTS to kernel
       run: |
@@ -112,22 +105,18 @@ jobs:
         
         KERNEL_DIR="build_dir/target-aarch64_generic_musl/linux-msm89xx_msm8916/linux-6.18.35"
         
-        if [ ! -d "$KERNEL_DIR" ]; then
-          echo "❌ Kernel directory not found!"
-          exit 1
-        fi
+        # Create kernel build directory
+        mkdir -p "$KERNEL_DIR/arch/arm64/boot/dts/qcom"
         
         # Copy DTS from target/linux to kernel
         DTS_SRC="target/linux/msm89xx/dts-6.18/arch/arm64/boot/dts/qcom"
         DTS_DST="$KERNEL_DIR/arch/arm64/boot/dts/qcom"
         
         if [ -d "$DTS_SRC" ]; then
-          mkdir -p "$DTS_DST"
           cp -v "$DTS_SRC"/*.dts* "$DTS_DST/" 2>/dev/null || true
           echo "✅ DTS copied from target/linux"
         else
           echo "⚠️ DTS source not found, downloading..."
-          mkdir -p "$DTS_DST"
           cd "$DTS_DST"
           wget -q https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts
           wget -q https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5-common.dtsi
@@ -156,7 +145,7 @@ jobs:
         ls -la "$DTS_DST/" | grep samsung || echo "No samsung DTS found"
 
     # ============================================
-    # 5. PATCH KERNEL MAKEFILE (FIXED)
+    # 6. PATCH KERNEL MAKEFILE
     # ============================================
     - name: 📄 Patch kernel Makefile
       run: |
@@ -165,35 +154,25 @@ jobs:
         
         echo "🔧 Patching $MAKE_FILE..."
         
-        # Check if Makefile exists
+        mkdir -p "$(dirname "$MAKE_FILE")"
+        
         if [ -f "$MAKE_FILE" ]; then
-          echo "✅ Makefile exists"
-          cat "$MAKE_FILE"
-          
-          # Check if DTS already in Makefile
-          if grep -q "msm8916-samsung-j5" "$MAKE_FILE"; then
-            echo "✅ DTS already in Makefile"
-          else
-            echo "Adding DTS to Makefile..."
-            # Use sed to add DTS
+          if ! grep -q "msm8916-samsung-j5" "$MAKE_FILE"; then
             sed -i '/dtb-$(CONFIG_ARCH_QCOM) +=/a \	msm8916-samsung-j5.dtb \\' "$MAKE_FILE"
             echo "✅ DTS added to Makefile"
+          else
+            echo "✅ DTS already in Makefile"
           fi
         else
-          echo "Creating new Makefile..."
-          mkdir -p "$(dirname "$MAKE_FILE")"
-          # Use echo instead of heredoc
           echo '# SPDX-License-Identifier: GPL-2.0' > "$MAKE_FILE"
           echo 'dtb-$(CONFIG_ARCH_QCOM) += msm8916-samsung-j5.dtb' >> "$MAKE_FILE"
           echo "✅ Makefile created"
         fi
         
-        echo ""
-        echo "📋 Final Makefile:"
         cat "$MAKE_FILE"
 
     # ============================================
-    # 6. GENERATE CONFIG
+    # 7. GENERATE CONFIG
     # ============================================
     - name: ⚙️ Generate config
       run: |
@@ -232,7 +211,7 @@ jobs:
         grep "CONFIG_KERNEL" .config | grep -v "is not set" | head -5
 
     # ============================================
-    # 7. BUILD KERNEL
+    # 8. BUILD KERNEL
     # ============================================
     - name: 🔨 Build kernel
       run: |
@@ -250,13 +229,13 @@ jobs:
           rm -rf staging_dir/target-aarch64_generic_musl
         fi
         
-        # Build kernel
+        # Build kernel (target/linux/compile will build toolchain if needed)
         make -j$CORES target/linux/compile V=s 2>&1 | tee kernel-build.log
         
         echo "✅ Kernel build completed"
 
     # ============================================
-    # 8. VERIFY KERNEL OUTPUT
+    # 9. VERIFY KERNEL OUTPUT
     # ============================================
     - name: 📂 Verify kernel output
       if: always()
@@ -295,7 +274,7 @@ jobs:
         fi
 
     # ============================================
-    # 9. BUILD DTB MANUALLY (if needed)
+    # 10. BUILD DTB MANUALLY (if needed)
     # ============================================
     - name: 🔧 Manual DTB build
       if: failure()
@@ -335,7 +314,7 @@ jobs:
         fi
 
     # ============================================
-    # 10. COPY OUTPUT
+    # 11. COPY OUTPUT
     # ============================================
     - name: 📦 Copy output
       if: success()
@@ -369,7 +348,7 @@ jobs:
         ls -lah "$OUTPUT_DIR/"
 
     # ============================================
-    # 11. UPLOAD
+    # 12. UPLOAD
     # ============================================
     - name: 📤 Upload kernel output
       if: success()
